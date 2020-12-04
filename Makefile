@@ -13,7 +13,7 @@ all: poisson
 poisson: source/PoissonSlab.cu source/RepulsivePotential.cuh
 	$(BASIC_LINE) source/PoissonSlab.cu  -o poisson -lcufft
 test: all
-#	(cd charged_wall; bash test.bash);
+	(cd charged_wall; bash test.bash);
 	(cd uncharged_wall; bash test.bash);
 clean:
 	rm -f poisson
