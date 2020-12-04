@@ -63,3 +63,7 @@ The following accuracy options are optional, the defaults provide a tolerance of
 **tolerance** Determines the cut off for the near field section of the algortihm. Default is 1e-4  
 **upsampling** The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2  
   
+### Python interface
+
+Additionally, a python interface is provided that allows to compute the electric field acting on a group of charges using the new solver.  
+
