@@ -1,0 +1,3 @@
+[submodule "source/uammd"]
+	path = source/uammd
+	url = https://github.com/RaulPPelaez/uammd
