@@ -57,7 +57,7 @@ The following options are available:
 **split** The Ewald splitting parameter  
 **Nxy** The number of cells in XY. If this option is present split must NOT be present, it will be computed from this.  
 
-The following accuracy options are optional, the defaults provide a tolerance of 5e-4
+The following accuracy options are optional, the defaults provide a tolerance of 5e-4  
 **support** Number of support cells for the interpolation kernel. Default is 10.  
 **numberStandardDeviations** Gaussian truncation. Default is 4  
 **tolerance** Determines the cut off for the near field section of the algortihm. Default is 1e-4  
