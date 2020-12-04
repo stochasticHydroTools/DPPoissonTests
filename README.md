@@ -5,6 +5,10 @@ This repo contains code and script to reproduce the data for the figures X (fold
 See README inside each folder for information about each simulation  
 
 The doubly periodic Poisson solver is provided by [UAMMD](https://github.com/RaulPPelaez/uammd), which is included as a submodule inside the source folder. **Make sure to clone this repo recursively.**  
+This means that you must clone using  
+```shell
+git clone --recursive https://github.com/stochasticHydroTools/DPPoissonTests
+```
 source/PoissonSlab.cu encodes a generic Brownian Dynamics simulation of charges that interact electrostatically via this doubly periodic solver. See the file for specific usage instructions.  
 
 ## USAGE:  
