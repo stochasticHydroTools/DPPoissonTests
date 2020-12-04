@@ -4,7 +4,7 @@ This repo contains code and script to reproduce the data for the figures X (fold
 
 See README inside each folder for information about each simulation  
 
-The doubly periodic Poisson solver is provided by [UAMMD](https://github.com/RaulPPelaez/uammd), which is included as a submodule inside the source folder. Make sure to clone this repo recursively.  
+The doubly periodic Poisson solver is provided by [UAMMD](https://github.com/RaulPPelaez/uammd), which is included as a submodule inside the source folder. **Make sure to clone this repo recursively.**  
 source/PoissonSlab.cu encodes a generic Brownian Dynamics simulation of charges that interact electrostatically via this doubly periodic solver. See the file for specific usage instructions.  
 
 ## USAGE:  
@@ -18,6 +18,7 @@ You can see a list of the available options down below, additional information i
 ### data.main options
 
 The executable created by the Makefile expects to find a file called data.main in the folder where it is executed. Alternatively the data.main file can be specify as its first argument.  
+
 data.main contains a series of parameters that allow to customize the simulation and must have the following  format:  
 ```shell  
 #Lines starting with # are ignored  
