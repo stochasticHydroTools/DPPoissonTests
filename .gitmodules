@@ -1,3 +1,6 @@
 [submodule "source/uammd"]
 	path = source/uammd
 	url = https://github.com/RaulPPelaez/uammd
+[submodule "python_interface/pybind11"]
+	path = python_interface/pybind11
+	url = https://github.com/pybind/pybind11

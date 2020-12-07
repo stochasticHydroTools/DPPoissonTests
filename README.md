@@ -70,4 +70,8 @@ The following accuracy options are optional, the defaults provide a tolerance of
 ### Python interface
 
 Additionally, a python interface is provided that allows to compute the electric field acting on a group of charges using the new solver.  
+This interface requires [pybind11](https://github.com/pybind/pybind11) to compile, which is included as a submodule and will be automatically downloaded if this repo is cloned recursively (see "About this repo" above).  
+In order to use it you must compile the python wrappers using make (doing ```make python``` or ```make all``` here will also compile the python library).  
+A file called uammd.*.so will be created and then "import uammd" can be used inside python. Notice that you might have to customize python\_interface/Makefile for your particular system.  
+See python_interface/dppoisson.py for a usage example.  
 

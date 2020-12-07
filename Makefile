@@ -8,10 +8,13 @@ INCLUDEFLAGS= -I $(UAMMD_ROOT)/src -I $(UAMMD_ROOT)/src/third_party
 BASIC_LINE= nvcc -O3 -std=c++11 -x cu $(INCLUDEFLAGS) --expt-relaxed-constexpr $(MKL_FLAGS) $(LAPACKE_FLAGS)
 
 
-all: poisson
+all: poisson python
 
 poisson: source/PoissonSlab.cu source/RepulsivePotential.cuh
 	$(BASIC_LINE) source/PoissonSlab.cu  -o poisson -lcufft
+
+python:
+	make -C python_interface
 test: all
 	(cd charged_wall; bash test.bash);
 	(cd uncharged_wall; bash test.bash);
