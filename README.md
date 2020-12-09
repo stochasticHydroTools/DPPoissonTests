@@ -1,6 +1,6 @@
 ## About this repository 
 
-This repo contains code and script to reproduce the data for the figures X (folder charged_wall) and Y (folder uncharged_wall) in the article [CITE THE ARTICLE HERE].  
+This repo contains code and scripts to reproduce the data for the figures in the applications section of the article [CITE THE ARTICLE HERE].  
 
 See README inside each folder for information about each simulation  
 
@@ -75,4 +75,5 @@ This interface requires [pybind11](https://github.com/pybind/pybind11) to compil
 In order to use it you must compile the python wrappers using make (doing ```make python``` or ```make all``` here will also compile the python library).  
 A file called uammd.*.so will be created and then "import uammd" can be used inside python. Notice that you might have to customize python\_interface/Makefile for your particular system.  
 See python_interface/dppoisson.py for a usage example.  
+Once compiled you can use "help(uammd)" for additional usage information.  
 
