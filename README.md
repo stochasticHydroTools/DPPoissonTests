@@ -17,7 +17,7 @@ Run make to compile, you might have to adapt it to your particular system before
 Running "$make test" will go into each test folder and run test.bash  
 
 Parameters are provided via the data.main files inside each folder. You may adapt/modify this file to simulate different systems.   
-You can see a list of the available options down below, additional information is available in source/PoissonSlab.cu  
+You can see a list of the available options down below, additional information is available in source/PoissonSlab.cu and each folder's README.md  
 
 ### data.main options
 
