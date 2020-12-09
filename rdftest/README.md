@@ -1,7 +1,7 @@
 ### ABOUT THIS SIMULATION:
 
 A group of equally charged particles with random sign (but ensuring electroneutrality) are let to evolve in a triply periodic environment via Brownian Dynamics.  
-Particles repell each other and the walls via a LJ-like potential.  
+Particles repell each other via a LJ-like potential.  
 See testRDF.bash and PoissonSlab.cu for more information.  
 
 ### USAGE:
