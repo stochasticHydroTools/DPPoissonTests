@@ -18,10 +18,12 @@ python:
 test: poisson
 	(cd charged_wall; bash test.bash);
 	(cd uncharged_wall; bash test.bash);
+	(cd rdftest; bash testRDF.bash);
 clean:
 	make -C python_interface clean
 	rm -rf charged_wall/results
 	rm -rf uncharged_wall/results
+	rm -rf rdftest/results
 	rm -f poisson
 
 

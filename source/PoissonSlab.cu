@@ -1,8 +1,10 @@
+
 /*Raul P. Pelaez 2020. DP Poisson test
 
 This file encodes the following simulation:
 
 A group of Gaussian sources of charge with width gw evolve via Brownian Dynamics inside a doubly periodic domain of dimensions Lxy, Lxy, H (periodic in XY and open in Z). 
+Optionally, a flag can be passed in the input to enable triply periodic electrostatics.
 
 Sources interact via an electrostatic potential and repell each other via a repulsive LJ-like potential.
 
@@ -34,7 +36,7 @@ The following options are available:
  
  H: The width of the domain
  Lxy: The dimensions of the box in XY
- permitivity: Permittivity inside the slab
+ permitivity: Permittivity inside the slab (only one used in triply periodic mode)
  permitivityBottom: Below z=-H/2
  permitivityTop: Above z=H/2
 
@@ -54,20 +56,22 @@ The following options are available:
  readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.
  
  noWall: Optional, if this flag is present particles will not be repelled by the wall.
+ triplyPeriodic: Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.
 
- split: The Ewald splitting parameter
- Nxy: The number of cells in XY. If this option is present split must NOT be present, it will be computed from this.
+ split: The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.
+ Nxy: The number of cells in XY. If this option is present split must NOT be present, it will be computed from this. Nxy can be provided instead of split for doubly periodic mode.
 
  The following accuracy options are optional, the defaults provide a tolerance of 5e-4:
  support: Number of support cells for the interpolation kernel. Default is 10.
  numberStandardDeviations: Gaussian truncation. Default is 4
- tolerance: Determines the cut off for the near field section of the algortihm. Default is 1e-4
+ tolerance: In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4. 
  upsampling: The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2
-
+ 
 */
 #include"uammd.cuh"
 #include"RepulsivePotential.cuh"
 #include"Interactor/PairForces.cuh"
+#include"Interactor/SpectralEwaldPoisson.cuh"
 #include"Interactor/ExternalForces.cuh"
 #include"Integrator/BrownianDynamics.cuh"
 #include"utils/InputFile.h"
@@ -118,6 +122,7 @@ struct Parameters{
   std::string outfile, readFile, forcefile;
 
   bool noWall = false;
+  bool triplyPeriodic=false;
 };
 
 struct UAMMD{
@@ -141,12 +146,10 @@ void initializeParticles(UAMMD sim){
 		    real pdf;
 		    do{
 		      p = make_real3(sim.sys->rng().uniform3(-0.5, 0.5))*make_real3(Lxy, Lxy, H-2*sim.par.gw);
-		      double K= 2.0/H;
-		      pdf = 1.0 ; //1.0/pow(cos(K*p.z),2)*pow(cos(K),2);
+		      pdf = 1.0;
 		    }while(sim.sys->rng().uniform(0, 1) > pdf);
 		    return make_real4(p, 0);
 		  });
-    //std::fill(charge.begin(), charge.end(), 1);
     fori(0, sim.par.numberParticles){
       charge[i] = ((i%2)-0.5)*2;
     }
@@ -189,7 +192,7 @@ std::shared_ptr<BDMethod> createIntegrator(UAMMD sim){
   return std::make_shared<BDMethod>(sim.pd, pg, sim.sys, par);
 }
 
-std::shared_ptr<DPPoissonSlab> createElectrostaticInteractor(UAMMD sim){  
+std::shared_ptr<DPPoissonSlab> createDoublyPeriodicElectrostaticInteractor(UAMMD sim){  
   DPPoissonSlab::Parameters par;
   par.Lxy = make_real2(sim.par.Lxy);
   par.H = sim.par.H;
@@ -224,6 +227,20 @@ std::shared_ptr<DPPoissonSlab> createElectrostaticInteractor(UAMMD sim){
   return std::make_shared<DPPoissonSlab>(sim.pd, pg, sim.sys, par);
 }
 
+std::shared_ptr<Poisson> createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
+  Poisson::Parameters par;
+  par.box = Box(make_real3(sim.par.Lxy, sim.par.Lxy, sim.par.H));
+  par.epsilon = sim.par.permitivity;
+  par.gw = sim.par.gw;
+  par.tolerance = sim.par.tolerance;
+  if(sim.par.split<0){
+    System::log<System::CRITICAL>("ERROR: Triply periodic mode needs an splitting parameter (Nxy wont do)");
+  }
+  par.split = sim.par.split;
+  auto pg = std::make_shared<ParticleGroup>(sim.pd, sim.sys, "All");
+  return std::make_shared<Poisson>(sim.pd, pg, sim.sys, par);
+}
+
 
 std::shared_ptr<Interactor> createWallRepulsionInteractor(UAMMD sim){
   RepulsivePotentialFunctor::PairParameters potpar;
@@ -255,7 +272,9 @@ template<class UsePotential> std::shared_ptr<Interactor> createShortRangeInterac
   real Lxy = sim.par.Lxy;
   real H = sim.par.H;
   params.box = Box(make_real3(Lxy, Lxy, H));
-  params.box.setPeriodicity(1,1,0);
+  if(not sim.par.triplyPeriodic){
+    params.box.setPeriodicity(1,1,0);
+  }
   auto pairForces = std::make_shared<SR>(sim.pd, sim.sys, params, pot);
   return pairForces;
 }
@@ -267,7 +286,7 @@ void writeSimulation(UAMMD sim){
   static std::ofstream out(sim.par.outfile);
   static std::ofstream outf(sim.par.forcefile);
   Box box(make_real3(sim.par.Lxy, sim.par.Lxy, sim.par.H));
-  box.setPeriodicity(1,1,false);
+  box.setPeriodicity(1,1,sim.par.triplyPeriodic?1:0);
   real3 L = box.boxSize;
   out<<"#Lx="<<L.x*0.5<<";Ly="<<L.y*0.5<<";Lz="<<L.z*0.5<<";"<<std::endl;
   outf<<"#"<<std::endl;
@@ -313,12 +332,15 @@ void saveConfiguration(UAMMD sim) {
   thrust::copy(thrust::cuda::par, pos.begin(), pos.end(), sim.savedPositions->begin()); 
 }
 
-
 int main(int argc, char *argv[]){  
   auto sim = initialize(argc, argv);
   auto bd = createIntegrator(sim);  
-
-  bd->addInteractor(createElectrostaticInteractor(sim));
+  if(sim.par.triplyPeriodic){
+    bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
+  }
+  else{
+    bd->addInteractor(createDoublyPeriodicElectrostaticInteractor(sim));
+  }
   if(sim.par.U0 > 0){
     bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
   }
@@ -333,23 +355,25 @@ int main(int argc, char *argv[]){
   constexpr int maximumRetriesPerStep=1e4;
   forj(0, sim.par.relaxSteps){
     bd->forwardTime();
-    if(checkWallOverlap(sim)){
-      numberRetries++;
-      if(numberRetries>maximumRetries){
-	throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+    if(not sim.par.triplyPeriodic){
+      if(checkWallOverlap(sim)){
+	numberRetries++;
+	if(numberRetries>maximumRetries){
+	  throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+	}
+	numberRetriesThisStep++;
+	if(numberRetriesThisStep>maximumRetriesPerStep){
+	  throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+	}
+	j=lastStepSaved;
+	restoreLastSavedConfiguration(sim);
+	continue;
       }
-      numberRetriesThisStep++;
-      if(numberRetriesThisStep>maximumRetriesPerStep){
-	throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+      if(j%saveRate==0){
+	numberRetriesThisStep = 0;
+	lastStepSaved=j;
+	saveConfiguration(sim);
       }
-      j=lastStepSaved;
-      restoreLastSavedConfiguration(sim);
-      continue;
-    }
-    if(j%saveRate==0){
-      numberRetriesThisStep = 0;
-      lastStepSaved=j;
-      saveConfiguration(sim);
     }
   }
   Timer tim;
@@ -357,29 +381,31 @@ int main(int argc, char *argv[]){
   lastStepSaved=0;
   forj(0, sim.par.numberSteps){
     bd->forwardTime();
-    if(checkWallOverlap(sim)){
-      numberRetries++;
-      if(numberRetries>maximumRetries){
-	throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+    if(not sim.par.triplyPeriodic){
+      if(checkWallOverlap(sim)){
+	numberRetries++;
+	if(numberRetries>maximumRetries){
+	  throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+	}
+	numberRetriesThisStep++;
+	if(numberRetriesThisStep>maximumRetriesPerStep){
+	  throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+	}
+	j=lastStepSaved;
+	restoreLastSavedConfiguration(sim);
+	continue;
       }
-      numberRetriesThisStep++;
-      if(numberRetriesThisStep>maximumRetriesPerStep){
-	throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+      if(j%saveRate==0){
+	numberRetriesThisStep=0;
+	lastStepSaved=j;
+	saveConfiguration(sim);
       }
-      j=lastStepSaved;
-      restoreLastSavedConfiguration(sim);
-      continue;
-    }
-    if(j%saveRate==0){
-      numberRetriesThisStep=0;
-      lastStepSaved=j;
-      saveConfiguration(sim);
     }
     if(sim.par.printSteps > 0 and j%sim.par.printSteps==0){
       writeSimulation(sim);
       numberRetriesThisStep=0;
       lastStepSaved=j;
-      saveConfiguration(sim);
+      saveConfiguration(sim);     
     }
   }
   System::log<System::MESSAGE>("Number of rejected configurations: %d (%g%% of total)", numberRetries, (double)numberRetries/(sim.par.numberSteps + sim.par.relaxSteps)*100.0);
@@ -391,6 +417,10 @@ int main(int argc, char *argv[]){
 Parameters readParameters(std::string datamain, shared_ptr<System> sys){
   InputFile in(datamain, sys);
   Parameters par;
+  if(in.getOption("triplyPeriodic", InputFile::Optional)){
+    par.triplyPeriodic= true;
+  }
+
   in.getOption("Lxy", InputFile::Required)>>par.Lxy;
   in.getOption("H", InputFile::Required)>>par.H;
   in.getOption("numberSteps", InputFile::Required)>>par.numberSteps;
@@ -411,9 +441,16 @@ Parameters readParameters(std::string datamain, shared_ptr<System> sys){
   in.getOption("gw", InputFile::Required)>>par.gw;
   in.getOption("tolerance", InputFile::Optional)>>par.tolerance;
   in.getOption("permitivity", InputFile::Required)>>par.permitivity;
-  in.getOption("permitivityTop", InputFile::Required)>>par.permitivityTop;
-  in.getOption("permitivityBottom", InputFile::Required)>>par.permitivityBottom;
-  in.getOption("split", InputFile::Optional)>>par.split;
+  if(not par.triplyPeriodic){
+    in.getOption("permitivityTop", InputFile::Required)>>par.permitivityTop;
+    in.getOption("permitivityBottom", InputFile::Required)>>par.permitivityBottom;
+  }
+  if(not par.triplyPeriodic){
+    in.getOption("split", InputFile::Optional)>>par.split;
+  }
+  else{
+    in.getOption("split", InputFile::Required)>>par.split;
+  }
   in.getOption("Nxy", InputFile::Optional)>>par.Nxy;
   in.getOption("support", InputFile::Optional)>>par.support;
   in.getOption("numberStandardDeviations", InputFile::Optional)>>par.numberStandardDeviations;
@@ -421,6 +458,7 @@ Parameters readParameters(std::string datamain, shared_ptr<System> sys){
   if(in.getOption("noWall", InputFile::Optional)){
     par.noWall= true;
   }
+
   if(par.split < 0 and par.Nxy < 0){
     System::log<System::CRITICAL>("ERROR: I need either Nxy or split");    
   }

@@ -1,0 +1,22 @@
+Lxy 257.15
+H 257.15
+numberSteps 1000
+printSteps -1
+relaxSteps 100
+dt         1e-1
+numberParticles 8192
+temperature    1.0
+viscosity   0.053051647697298
+hydrodynamicRadius 1
+outfile /dev/stdout
+readFile /dev/stdin
+sigma   2
+U0 0.2232754
+r_m 1
+p 2
+triplyPeriodic
+noWall
+tolerance 1e-4
+permitivity 0.022317741256664
+gw 0.02
+split 0.080

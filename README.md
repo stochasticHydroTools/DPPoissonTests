@@ -57,14 +57,15 @@ The following options are available:
 **readFile** Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.  
 
 **noWall** Optional, if this flag is present particles will not be repelled by the wall.  
+**triplyPeriodic** Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.  
 
-**split** The Ewald splitting parameter  
-**Nxy** The number of cells in XY. If this option is present split must NOT be present, it will be computed from this.  
+**split** The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.  
+**Nxy** The number of cells in XY. If this option is present split must NOT be present, it will be computed from this. Nxy can be provided instead of split for doubly periodic mode.  
 
 The following accuracy options are optional, the defaults provide a tolerance of 5e-4  
 **support** Number of support cells for the interpolation kernel. Default is 10.  
 **numberStandardDeviations** Gaussian truncation. Default is 4  
-**tolerance** Determines the cut off for the near field section of the algortihm. Default is 1e-4  
+**tolerance** In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4.   
 **upsampling** The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2  
   
 ### Python interface
