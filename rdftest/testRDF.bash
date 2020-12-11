@@ -140,7 +140,7 @@ do
     done
     cat rdf.*.sim | sort -g -k1 |
 	datamash -W groupby 1 mean 2 sstdev 2 |
-	sort -g -k1 | awk '{print $1, $2, $3/sqrt('$numberSimulations)}' > rdf.dt$dt.dat
+	sort -g -k1 | awk '{print $1, $2, $3/sqrt('$numberSimulations')}' > rdf.dt$dt.dat
     rm -f rdf.*.sim
 done
 mkdir -p results
