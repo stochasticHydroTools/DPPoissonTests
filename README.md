@@ -1,6 +1,6 @@
 ## About this repository 
 
-This repo contains code and scripts to reproduce the data for the figures in the applications section of the article [Maxian et al. A fast spectral method for electrostatics in doubly periodic slit channels](https://arxiv.org/abs/2101.07088).  
+This repo contains code and scripts to reproduce the data for the figures in the applications section of the article [Maxian et al. "A fast spectral method for electrostatics in doubly periodic slit channels"](https://arxiv.org/abs/2101.07088).  
 
 See README inside each folder for information about each simulation  
 
