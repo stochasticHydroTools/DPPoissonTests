@@ -2,6 +2,7 @@
 
 This repo contains code and scripts to reproduce the data for the figures in the applications section of the article [Maxian et al. "A fast spectral method for electrostatics in doubly periodic slit channels"](https://arxiv.org/abs/2101.07088).  
 
+
 See README inside each folder for information about each simulation  
 
 The doubly periodic Poisson solver is provided by [UAMMD](https://github.com/RaulPPelaez/uammd), which is included as a submodule inside the source folder. **Make sure to clone this repo recursively.**  
@@ -9,7 +10,10 @@ This means that you must clone using
 ```shell
 git clone --recursive https://github.com/stochasticHydroTools/DPPoissonTests
 ```
-source/PoissonSlab.cu encodes a generic Brownian Dynamics simulation of charges that interact electrostatically via this doubly periodic solver. See the file for specific usage instructions.  
+source/PoissonSlab.cu encodes a generic Brownian Dynamics simulation of charges that interact electrostatically via this doubly periodic solver. See the file for specific usage instructions. This code allows to also run triply periodic electrostatics via a fast GPU spectral Ewald method also provided by UAMMD.   
+
+See the related UAMMD wiki pages for [triply periodic](https://github.com/RaulPPelaez/UAMMD/wiki/SpectralEwaldPoisson) and [doubly periodic](https://github.com/RaulPPelaez/UAMMD/wiki/DPPoisson) electrostatics for additional information about those modules.  
+
 
 ## USAGE:  
 
@@ -76,4 +80,3 @@ In order to use it you must compile the python wrappers using make (doing ```mak
 A file called uammd.*.so will be created and then "import uammd" can be used inside python. Notice that you might have to customize python\_interface/Makefile for your particular system.  
 See python_interface/dppoisson.py for a usage example.  
 Once compiled you can use "help(uammd)" for additional usage information.  
-
