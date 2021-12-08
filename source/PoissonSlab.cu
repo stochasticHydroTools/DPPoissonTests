@@ -1,5 +1,5 @@
 
-/*Raul P. Pelaez 2020. DP Poisson test
+/*Raul P. Pelaez 2020-2021. DP Poisson test
 
 This file encodes the following simulation:
 
@@ -61,11 +61,20 @@ The following options are available:
  split: The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.
  Nxy: The number of cells in XY. If this option is present split must NOT be present, it will be computed from this. Nxy can be provided instead of split for doubly periodic mode.
 
+ mobilityFile: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file. This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0). The values for each particle will be linearly interpolated from the data provided in the file. The order of the values does not matter. Example:
+--- mobility.dat---
+-1.0 0.0
+ 0.0 1.0
+ 1.0 0.0
+-------------------
+
  The following accuracy options are optional, the defaults provide a tolerance of 5e-4:
  support: Number of support cells for the interpolation kernel. Default is 10.
  numberStandardDeviations: Gaussian truncation. Default is 4
  tolerance: In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4. 
  upsampling: The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2
+
+
  
 */
 #include"uammd.cuh"
@@ -74,6 +83,7 @@ The following options are available:
 #include"Interactor/SpectralEwaldPoisson.cuh"
 #include"Interactor/ExternalForces.cuh"
 #include"Integrator/BrownianDynamics.cuh"
+#include"Leimkuhler.cuh"
 #include"utils/InputFile.h"
 #include"Interactor/DoublyPeriodic/DPPoissonSlab.cuh"
 #include <fstream>
@@ -82,20 +92,19 @@ using namespace uammd;
 using std::make_shared;
 using std::endl;
 
-
 class RepulsiveWall{
   RepulsivePotentialFunctor::PairParameters params;
   real H;
 public:
   RepulsiveWall(real H, RepulsivePotentialFunctor::PairParameters ip):H(H),params(ip){}
 
-  __device__ __forceinline__ real3 force(real4 pos){
+  __device__ real3 force(real4 pos){
     real distanceToImage = abs(abs(pos.z) - H * real(0.5))*real(2.0);
     real fz = RepulsivePotentialFunctor::force(distanceToImage * distanceToImage, params) * distanceToImage;
     return make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));
   }
 
-  std::tuple<const real4 *> getArrays(ParticleData *pd){
+  auto getArrays(ParticleData *pd){
     auto pos = pd->getPos(access::location::gpu, access::mode::read);
     return std::make_tuple(pos.raw());
   }
@@ -123,6 +132,9 @@ struct Parameters{
 
   bool noWall = false;
   bool triplyPeriodic=false;
+
+  std::string mobilityFile;
+  bool idealParticles;
 };
 
 struct UAMMD{
@@ -181,18 +193,27 @@ UAMMD initialize(int argc, char *argv[]){
   initializeParticles(sim); 
   return sim;
 }
-using BDMethod = BD::Leimkuhler;
-std::shared_ptr<BDMethod> createIntegrator(UAMMD sim){
-  typename BDMethod::Parameters par;
+
+auto createIntegrator(UAMMD sim){
+  typename BD::Parameters par;
   par.temperature = sim.par.temperature;
   par.viscosity = sim.par.viscosity;
   par.hydrodynamicRadius = sim.par.hydrodynamicRadius;
   par.dt = sim.par.dt;
   auto pg = std::make_shared<ParticleGroup>(sim.pd, sim.sys, "All");
-  return std::make_shared<BDMethod>(sim.pd, pg, sim.sys, par);
+  std::shared_ptr<Integrator> integrator;
+  if(sim.par.mobilityFile.empty()){
+    using BDMethod = BD::Leimkuhler;
+    integrator =  std::make_shared<BDMethod>(sim.pd, pg, sim.sys, par);
+  }
+  else{
+    auto selfMobilityFactor = std::make_shared<SelfMobility>(sim.par.mobilityFile, sim.par.H);
+    integrator = std::make_shared<LeimkuhlerWithMobility>(sim.pd, pg, sim.sys, par, selfMobilityFactor);
+  }
+  return integrator;
 }
 
-std::shared_ptr<DPPoissonSlab> createDoublyPeriodicElectrostaticInteractor(UAMMD sim){  
+auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){  
   DPPoissonSlab::Parameters par;
   par.Lxy = make_real2(sim.par.Lxy);
   par.H = sim.par.H;
@@ -227,7 +248,7 @@ std::shared_ptr<DPPoissonSlab> createDoublyPeriodicElectrostaticInteractor(UAMMD
   return std::make_shared<DPPoissonSlab>(sim.pd, pg, sim.sys, par);
 }
 
-std::shared_ptr<Poisson> createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
+auto createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
   Poisson::Parameters par;
   par.box = Box(make_real3(sim.par.Lxy, sim.par.Lxy, sim.par.H));
   par.epsilon = sim.par.permitivity;
@@ -241,8 +262,7 @@ std::shared_ptr<Poisson> createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
   return std::make_shared<Poisson>(sim.pd, pg, sim.sys, par);
 }
 
-
-std::shared_ptr<Interactor> createWallRepulsionInteractor(UAMMD sim){
+auto createWallRepulsionInteractor(UAMMD sim){
   RepulsivePotentialFunctor::PairParameters potpar;
   potpar.cutOff2 = sim.par.cutOff*sim.par.cutOff;
   potpar.sigma = sim.par.sigma;
@@ -252,7 +272,7 @@ std::shared_ptr<Interactor> createWallRepulsionInteractor(UAMMD sim){
   return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, sim.sys, make_shared<RepulsiveWall>(sim.par.H, potpar));
 }
 
-std::shared_ptr<RepulsivePotential> createPotential(UAMMD sim){
+auto createPotential(UAMMD sim){
   auto pot = std::make_shared<RepulsivePotential>(sim.sys);
   RepulsivePotential::InputPairParameters ppar;
   ppar.cutOff = sim.par.cutOff;
@@ -265,7 +285,7 @@ std::shared_ptr<RepulsivePotential> createPotential(UAMMD sim){
  return pot;
 }
 
-template<class UsePotential> std::shared_ptr<Interactor> createShortRangeInteractor(UAMMD sim){
+template<class UsePotential> auto createShortRangeInteractor(UAMMD sim){
   auto pot = createPotential(sim);
   using SR = PairForces<UsePotential>;
   typename SR::Parameters params;
@@ -334,15 +354,17 @@ void saveConfiguration(UAMMD sim) {
 
 int main(int argc, char *argv[]){  
   auto sim = initialize(argc, argv);
-  auto bd = createIntegrator(sim);  
-  if(sim.par.triplyPeriodic){
-    bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
-  }
-  else{
-    bd->addInteractor(createDoublyPeriodicElectrostaticInteractor(sim));
-  }
-  if(sim.par.U0 > 0){
-    bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
+  auto bd = createIntegrator(sim);
+  if(not sim.par.idealParticles){
+    if(sim.par.triplyPeriodic){
+      bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
+    }
+    else{
+      bd->addInteractor(createDoublyPeriodicElectrostaticInteractor(sim));
+    }
+    if(sim.par.U0 > 0){
+      bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
+    }
   }
   if(not sim.par.noWall){
     bd->addInteractor(createWallRepulsionInteractor(sim));
@@ -405,7 +427,7 @@ int main(int argc, char *argv[]){
       writeSimulation(sim);
       numberRetriesThisStep=0;
       lastStepSaved=j;
-      saveConfiguration(sim);     
+      saveConfiguration(sim);
     }
   }
   System::log<System::MESSAGE>("Number of rejected configurations: %d (%g%% of total)", numberRetries, (double)numberRetries/(sim.par.numberSteps + sim.par.relaxSteps)*100.0);
@@ -457,12 +479,13 @@ Parameters readParameters(std::string datamain, shared_ptr<System> sys){
   in.getOption("upsampling", InputFile::Optional)>>par.upsampling;
   if(in.getOption("noWall", InputFile::Optional)){
     par.noWall= true;
-  }
-
+  }  
   if(par.split < 0 and par.Nxy < 0){
     System::log<System::CRITICAL>("ERROR: I need either Nxy or split");    
   }
   par.cutOff = par.sigma*pow(2,1.0/par.p);
+  in.getOption("useMobilityFromFile", InputFile::Optional)>>par.mobilityFile;
+  in.getOption("idealParticles", InputFile::Optional)>>par.idealParticles;
   return par;
 }
 

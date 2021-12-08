@@ -20,3 +20,5 @@ tolerance 1e-4
 permitivity 0.022317741256664
 gw 0.02
 split 0.080
+useMobilityFromFile mob.dat
+idealParticles
