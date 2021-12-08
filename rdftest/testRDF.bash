@@ -113,7 +113,7 @@ then
 	echo "ERROR When compiling RadialDistributionFunction, check inside tools/ and ensure tools/rdf exists before continuing" > /dev/stderr
 	exit 1
     fi
-    cp RadialDistributionFunction/build/bin/rdf ..
+    cp RadialDistributionFunction/build/bin/rdf .
     rm -rf RadialDistributionFunction
 fi
 cd ..
