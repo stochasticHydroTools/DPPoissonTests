@@ -61,12 +61,14 @@ The following options are available:
  split: The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.
  Nxy: The number of cells in XY. If this option is present split must NOT be present, it will be computed from this. Nxy can be provided instead of split for doubly periodic mode.
 
- mobilityFile: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file. This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0). The values for each particle will be linearly interpolated from the data provided in the file. The order of the values does not matter. Example:
+ useMobilityFromFile: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file. This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0). The values for each particle will be linearly interpolated from the data provided in the file. The order of the values does not matter. Example:
 --- mobility.dat---
 -1.0 0.0
  0.0 1.0
  1.0 0.0
 -------------------
+
+ idealParticles: Optional. If this flag is present particles will not interact between them in any way.
 
  The following accuracy options are optional, the defaults provide a tolerance of 5e-4:
  support: Number of support cells for the interpolation kernel. Default is 10.
@@ -134,7 +136,7 @@ struct Parameters{
   bool triplyPeriodic=false;
 
   std::string mobilityFile;
-  bool idealParticles;
+  bool idealParticles=false;
 };
 
 struct UAMMD{
@@ -182,10 +184,7 @@ UAMMD initialize(int argc, char *argv[]){
   std::random_device r;
   auto now = static_cast<long long unsigned int>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
   sim.sys->rng().setSeed(now);
-  std::string datamain = argv[1]; 
-  if(datamain.empty()){
-    datamain = "data.main";
-  }
+  std::string datamain = argc>1?argv[1]:"data.main";
   sim.par = readParameters(datamain, sim.sys); 
   sim.pd = std::make_shared<ParticleData>(sim.par.numberParticles, sim.sys);
   sim.savedPositions = std::make_shared<thrust::device_vector<real4>>();
@@ -485,7 +484,8 @@ Parameters readParameters(std::string datamain, shared_ptr<System> sys){
   }
   par.cutOff = par.sigma*pow(2,1.0/par.p);
   in.getOption("useMobilityFromFile", InputFile::Optional)>>par.mobilityFile;
-  in.getOption("idealParticles", InputFile::Optional)>>par.idealParticles;
+  if(in.getOption("idealParticles", InputFile::Optional))
+    par.idealParticles = true;
   return par;
 }
 

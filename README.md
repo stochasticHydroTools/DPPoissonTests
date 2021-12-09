@@ -71,6 +71,15 @@ The following accuracy options are optional, the defaults provide a tolerance of
 **numberStandardDeviations** Gaussian truncation. Default is 4  
 **tolerance** In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4.   
 **upsampling** The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2  
+**useMobilityFromFile**: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file. This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0). The values for each particle will be spline interpolated from the data provided in the file. The order of the values does not matter. The following example is equivalent to this option not being present at all:  
+```bash
+--- mobility.dat---
+-1.0 1.0
+ 0.0 1.0
+ 1.0 1.0
+-------------------
+```  
+ **idealParticles**: Optional. If this flag is present particles will not interact between them in any way.  
   
 ### Python interface
 
