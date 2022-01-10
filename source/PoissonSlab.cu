@@ -61,11 +61,11 @@ The following options are available:
  split: The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.
  Nxy: The number of cells in XY. If this option is present split must NOT be present, it will be computed from this. Nxy can be provided instead of split for doubly periodic mode.
 
- useMobilityFromFile: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file. This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0). The values for each particle will be linearly interpolated from the data provided in the file. The order of the values does not matter. Example:
+ useMobilityFromFile: Optional, if this option is present, the mobility will depend on the height of the particle according to the data in this file.This file must have two columns with a list of normalized heights (so Z must go from -1 to 1) and normalized mobilities (i.e. 6*pi*eta*a*M0) in X, Y and Z. The values for each particle will be linearly interpolated from the data provided in the file. The order of the values does not matter. Example:
 --- mobility.dat---
--1.0 0.0
- 0.0 1.0
- 1.0 0.0
+-1.0 1.0 1.0 1.0
+ 0.0 1.0 1.0 1.0
+ 1.0 1.0 1.0 1.0
 -------------------
 
  idealParticles: Optional. If this flag is present particles will not interact between them in any way.
@@ -311,7 +311,6 @@ void writeSimulation(UAMMD sim){
   outf<<"#"<<std::endl;
   fori(0, sim.par.numberParticles){
     real3 p = box.apply_pbc(make_real3(pos[i]));
-    p.z = pos[i].z;
     real q = charge[i];
     out<<std::setprecision(2*sizeof(real))<<p<<" "<<q<<"\n";
     if(outf.good()){
