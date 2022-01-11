@@ -97,7 +97,7 @@ public:
     const auto MandDiffM = mobilityAndDerivative(real(2.0)*z);
     real3 M = make_real3(MandDiffM);
     real diffMz = MandDiffM.w;
-    return thrust::make_pair(M, make_real3(0, 0, diffMz/Lz));
+    return thrust::make_pair(M, make_real3(0, 0, real(2.0)*diffMz/Lz));
   }
 
 };
@@ -114,7 +114,8 @@ public:
 			 std::shared_ptr<SelfMobility> selfMobilityFactor):
     BaseBrownianIntegrator(pd, pg, sys, par),
     selfMobilityFactor(selfMobilityFactor){
-    sys->log<System::MESSAGE>("[BD::LeimkuhlerMobility] Initialized");
+    this->seed = sys->rng().next32();
+    sys->log<System::MESSAGE>("[BD::LeimkuhlerMobility] Initialized with seed %u", this->seed);
   }
 
   LeimkuhlerWithMobility(shared_ptr<ParticleData> pd,
