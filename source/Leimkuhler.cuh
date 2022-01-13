@@ -29,18 +29,18 @@ class SelfMobility{
   //Reads the height vs the three self mobilities from the file
   auto readMobilityFile(std::string fileName){
     std::ifstream in(fileName);
-    std::istream_iterator<real4> begin(in), end;
-    std::vector<real4> data{begin, end};
+    std::istream_iterator<double4> begin(in), end;
+    std::vector<double4> data{begin, end};
     //The spline library needs input data in ascending order
-    std::sort(data.begin(), data.end(),[](real4 a, real4 b){return a.x<b.x;});
+    std::sort(data.begin(), data.end(),[](double4 a, double4 b){return a.x<b.x;});
     std::vector<double> Z(data.size());
     auto Mx = Z;
     auto My = Mx;
     auto Mz = My;
-    std::transform(data.begin(), data.end(), Z.begin(), [](real4 a){return a.x;});
-    std::transform(data.begin(), data.end(), Mx.begin(), [](real4 a){return a.y;});
-    std::transform(data.begin(), data.end(), My.begin(), [](real4 a){return a.z;});
-    std::transform(data.begin(), data.end(), Mz.begin(), [](real4 a){return a.w;});
+    std::transform(data.begin(), data.end(), Z.begin(), [](double4 a){return a.x;});
+    std::transform(data.begin(), data.end(), Mx.begin(), [](double4 a){return a.y;});
+    std::transform(data.begin(), data.end(), My.begin(), [](double4 a){return a.z;});
+    std::transform(data.begin(), data.end(), Mz.begin(), [](double4 a){return a.w;});
     return std::make_tuple(Z,Mx,My,Mz);
   }
 
@@ -75,20 +75,19 @@ public:
     mobilityx.set_points(std::get<0>(data), std::get<1>(data));
     mobilityy.set_points(std::get<0>(data), std::get<2>(data));
     mobilityz.set_points(std::get<0>(data), std::get<3>(data));
-    constexpr int ntablePoints = 8192;
-    tk::spline derivative = this->computeDerivative(mobilityz, 2*std::get<0>(data).size());
-    auto allM =[&](real z){return make_real4(mobilityx(z),mobilityy(z),mobilityz(z), derivative(z));};
-
-    std::ofstream out("mob.test");
-    int nsam = 1000;
-    fori(0, nsam){
-      real z = -1 + i*2.0/nsam;
-      auto mob = allM(z);
-      out<<z<<" "<<mob<<std::endl;
-    }
-    mobilityAndDerivative = TabulatedFunction<real4>(ntablePoints, -1, 1,
-						     allM
-			    );
+    const real hdiff = 1e-3;
+    const int ntablePoints = std::max(int(Lz/hdiff), 1<<20);
+    //const int derivativePoints = std::max(int(Lz/hdiff), ntablePoints);
+    //tk::spline derivative = this->computeDerivative(mobilityz, derivativePoints);
+    auto allM =[&](real z){return make_real4(mobilityx(z),mobilityy(z),mobilityz(z), mobilityz.deriv(1, z));};
+    // std::ofstream out("mob.test");
+    // int nsam = 1000;
+    // fori(0, nsam){
+    //   real z = -1 + i*2.0/nsam;
+    //   auto mob = allM(z);
+    //   out<<z<<" "<<mob<<std::endl;
+    // }
+    mobilityAndDerivative = TabulatedFunction<real4>(ntablePoints, -1, 1, allM);
   }
 
   //The position received by this function will be folded to the main cell.
@@ -97,6 +96,10 @@ public:
     const auto MandDiffM = mobilityAndDerivative(real(2.0)*z);
     real3 M = make_real3(MandDiffM);
     real diffMz = MandDiffM.w;
+    // const real mz = 2+sin(4*M_PI*z);
+    // const real dmz = 2*M_PI*cos(4*M_PI*z);
+    // M = M*0+mz;
+    // diffMz = dmz;
     return thrust::make_pair(M, make_real3(0, 0, real(2.0)*diffMz/Lz));
   }
 
@@ -105,6 +108,7 @@ public:
 //Implements the algorithm in eq. 45 of [2]. Allows for a position-dependent mobility
 class LeimkuhlerWithMobility: public BD::BaseBrownianIntegrator{
   std::shared_ptr<SelfMobility> selfMobilityFactor;
+  thrust::device_vector<real3> noisePrevious;
 public:
   
   LeimkuhlerWithMobility(shared_ptr<ParticleData> pd,
@@ -115,6 +119,7 @@ public:
     BaseBrownianIntegrator(pd, pg, sys, par),
     selfMobilityFactor(selfMobilityFactor){
     this->seed = sys->rng().next32();
+    this->steps = 0;
     sys->log<System::MESSAGE>("[BD::LeimkuhlerMobility] Initialized with seed %u", this->seed);
   }
 
@@ -145,6 +150,7 @@ namespace Leimkuhler_ns{
 			       real3 Kx, real3 Ky, real3 Kz,
 			       real selfMobility,
 			       SelfMobility selfMobilityFactor,
+			       real3* noisePrevious,
 			       real* radius,
 			       real dt,
 			       bool is2D,
@@ -163,11 +169,10 @@ namespace Leimkuhler_ns{
     R += dt*( KR + M*F );
     if(temperature > 0){
       int ori = originalIndex[i];
-      const auto B = sqrt(real(2.0)*temperature*M*dt);
-      const auto dW = genNoise(ori, stepNum, seed);
-      // const auto B = sqrt(real(0.5)*temperature*M/dt);
-      // const auto dW = genNoise(ori, stepNum, seed) + genNoise(ori, stepNum-1, seed);
-      R += B*dW + temperature*dt*m0*factor.second;
+      const auto Bn = sqrt(real(2.0)*temperature*M*dt);
+      const auto dWn = genNoise(ori, stepNum, seed);
+      R += real(0.5)*(Bn*dWn+noisePrevious[ori]) + temperature*dt*m0*factor.second;
+      noisePrevious[ori] = Bn*dWn;
     }
     pos[i].x = R.x;
     pos[i].y = R.y;
@@ -187,6 +192,9 @@ void LeimkuhlerWithMobility::forwardTime(){
 
 void LeimkuhlerWithMobility::updatePositions(){
   int numberParticles = pg->getNumberParticles();
+  noisePrevious.resize(numberParticles);
+  if(steps==1)
+    thrust::fill(noisePrevious.begin(), noisePrevious.end(), real3());
   int BLOCKSIZE = 128;
   uint Nthreads = BLOCKSIZE<numberParticles?BLOCKSIZE:numberParticles;
   uint Nblocks = numberParticles/Nthreads +  ((numberParticles%Nthreads!=0)?1:0);
@@ -202,6 +210,7 @@ void LeimkuhlerWithMobility::updatePositions(){
 							    Kx, Ky, Kz,
 							    selfMobility,
 							    *selfMobilityFactor,
+							    thrust::raw_pointer_cast(noisePrevious.data()),
 							    d_radius,
 							    dt,
 							    is2D,
