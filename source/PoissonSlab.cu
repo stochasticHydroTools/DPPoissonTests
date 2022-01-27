@@ -100,14 +100,16 @@ class RepulsiveWall{
 public:
   RepulsiveWall(real H, RepulsivePotentialFunctor::PairParameters ip):H(H),params(ip){}
 
-  __device__ real3 force(real4 pos){
+  __device__ ForceEnergyVirial sum(Interactor::Computables comp, real4 pos /*, real mass */){
     real distanceToImage = abs(abs(pos.z) - H * real(0.5))*real(2.0);
     real fz = RepulsivePotentialFunctor::force(distanceToImage * distanceToImage, params) * distanceToImage;
-    return make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));
+    ForceEnergyVirial fev;
+    fev.force = make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));    
+    return fev;
   }
 
   auto getArrays(ParticleData *pd){
-    auto pos = pd->getPos(access::location::gpu, access::mode::read);
+    auto pos = pd->getPos(access::gpu, access::read);
     return std::make_tuple(pos.raw());
   }
 };
@@ -140,13 +142,12 @@ struct Parameters{
 };
 
 struct UAMMD{
-  std::shared_ptr<System> sys;
   std::shared_ptr<ParticleData> pd;
   std::shared_ptr<thrust::device_vector<real4>> savedPositions;
   Parameters par;
 };
 
-Parameters readParameters(std::string fileName, shared_ptr<System> sys);
+Parameters readParameters(std::string fileName);
 
 void initializeParticles(UAMMD sim){
   auto pos = sim.pd->getPos(access::location::cpu, access::mode::write);
@@ -159,9 +160,9 @@ void initializeParticles(UAMMD sim){
 		    real3 p;
 		    real pdf;
 		    do{
-		      p = make_real3(sim.sys->rng().uniform3(-0.5, 0.5))*make_real3(Lxy, Lxy, H-2*sim.par.gw);
+		      p = make_real3(sim.pd->getSystem()->rng().uniform3(-0.5, 0.5))*make_real3(Lxy, Lxy, H-2*sim.par.gw);
 		      pdf = 1.0;
-		    }while(sim.sys->rng().uniform(0, 1) > pdf);
+		    }while(sim.pd->getSystem()->rng().uniform(0, 1) > pdf);
 		    return make_real4(p, 0);
 		  });
     fori(0, sim.par.numberParticles){
@@ -180,13 +181,13 @@ void initializeParticles(UAMMD sim){
 
 UAMMD initialize(int argc, char *argv[]){
   UAMMD sim;
-  sim.sys = std::make_shared<System>(argc, argv);
+  auto sys = std::make_shared<System>(argc, argv);
   std::random_device r;
   auto now = static_cast<long long unsigned int>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  sim.sys->rng().setSeed(now);
+  sys->rng().setSeed(now);
   std::string datamain = argc>1?argv[1]:"data.main";
-  sim.par = readParameters(datamain, sim.sys); 
-  sim.pd = std::make_shared<ParticleData>(sim.par.numberParticles, sim.sys);
+  sim.par = readParameters(datamain); 
+  sim.pd = std::make_shared<ParticleData>(sim.par.numberParticles, sys);
   sim.savedPositions = std::make_shared<thrust::device_vector<real4>>();
   sim.savedPositions->resize(sim.par.numberParticles);
   initializeParticles(sim); 
@@ -199,15 +200,14 @@ auto createIntegrator(UAMMD sim){
   par.viscosity = sim.par.viscosity;
   par.hydrodynamicRadius = sim.par.hydrodynamicRadius;
   par.dt = sim.par.dt;
-  auto pg = std::make_shared<ParticleGroup>(sim.pd, sim.sys, "All");
   std::shared_ptr<Integrator> integrator;
   if(sim.par.mobilityFile.empty()){
     using BDMethod = BD::Leimkuhler;
-    integrator =  std::make_shared<BDMethod>(sim.pd, pg, sim.sys, par);
+    integrator =  std::make_shared<BDMethod>(sim.pd, par);
   }
   else{
     auto selfMobilityFactor = std::make_shared<SelfMobility>(sim.par.mobilityFile, sim.par.H);
-    integrator = std::make_shared<LeimkuhlerWithMobility>(sim.pd, pg, sim.sys, par, selfMobilityFactor);
+    integrator = std::make_shared<LeimkuhlerWithMobility>(sim.pd, par, selfMobilityFactor);
   }
   return integrator;
 }
@@ -243,8 +243,7 @@ auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){
   }
   par.support = sim.par.support;
   par.numberStandardDeviations = sim.par.numberStandardDeviations;
-  auto pg = std::make_shared<ParticleGroup>(sim.pd, sim.sys, "All");
-  return std::make_shared<DPPoissonSlab>(sim.pd, pg, sim.sys, par);
+  return std::make_shared<DPPoissonSlab>(sim.pd, par);
 }
 
 auto createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
@@ -257,8 +256,7 @@ auto createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
     System::log<System::CRITICAL>("ERROR: Triply periodic mode needs an splitting parameter (Nxy wont do)");
   }
   par.split = sim.par.split;
-  auto pg = std::make_shared<ParticleGroup>(sim.pd, sim.sys, "All");
-  return std::make_shared<Poisson>(sim.pd, pg, sim.sys, par);
+  return std::make_shared<Poisson>(sim.pd, par);
 }
 
 auto createWallRepulsionInteractor(UAMMD sim){
@@ -268,18 +266,18 @@ auto createWallRepulsionInteractor(UAMMD sim){
   potpar.U0 = sim.par.U0;
   potpar.r_m = sim.par.r_m;
   potpar.p = sim.par.p;
-  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, sim.sys, make_shared<RepulsiveWall>(sim.par.H, potpar));
+  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, make_shared<RepulsiveWall>(sim.par.H, potpar));
 }
 
 auto createPotential(UAMMD sim){
-  auto pot = std::make_shared<RepulsivePotential>(sim.sys);
+  auto pot = std::make_shared<RepulsivePotential>();
   RepulsivePotential::InputPairParameters ppar;
   ppar.cutOff = sim.par.cutOff;
   ppar.U0 = sim.par.U0;
   ppar.sigma = sim.par.sigma;
   ppar.r_m = sim.par.r_m;
   ppar.p = sim.par.p;
-  sim.sys->log<System::MESSAGE>("Repulsive rcut: %g", ppar.cutOff);
+  System::log<System::MESSAGE>("Repulsive rcut: %g", ppar.cutOff);
   pot->setPotParameters(0, 0, ppar);
  return pot;
 }
@@ -294,7 +292,7 @@ template<class UsePotential> auto createShortRangeInteractor(UAMMD sim){
   if(not sim.par.triplyPeriodic){
     params.box.setPeriodicity(1,1,0);
   }
-  auto pairForces = std::make_shared<SR>(sim.pd, sim.sys, params, pot);
+  auto pairForces = std::make_shared<SR>(sim.pd, params, pot);
   return pairForces;
 }
 
@@ -434,8 +432,8 @@ int main(int argc, char *argv[]){
   return 0;
 }
 
-Parameters readParameters(std::string datamain, shared_ptr<System> sys){
-  InputFile in(datamain, sys);
+Parameters readParameters(std::string datamain){
+  InputFile in(datamain);
   Parameters par;
   if(in.getOption("triplyPeriodic", InputFile::Optional)){
     par.triplyPeriodic= true;

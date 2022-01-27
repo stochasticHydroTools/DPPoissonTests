@@ -29,17 +29,15 @@ struct Real4ToReal3{
 
 struct UAMMD {
   using real = uammd::real;
-  std::shared_ptr<uammd::System> sys;
   std::shared_ptr<uammd::ParticleData> pd;
   std::shared_ptr<DPPoissonSlab> dppoisson;
   thrust::device_vector<uammd::real3> tmp;
   int numberParticles;
   cudaStream_t st;
   UAMMD(Parameters par, int numberParticles): numberParticles(numberParticles){
-    this->sys = std::make_shared<uammd::System>();
-    this->pd = std::make_shared<uammd::ParticleData>(numberParticles, sys);
-    auto pg = std::make_shared<uammd::ParticleGroup>(pd, sys, "All");
-    this->dppoisson = std::make_shared<DPPoissonSlab>(pd, pg, sys, par);
+    this->pd = std::make_shared<uammd::ParticleData>(numberParticles);
+    auto pg = std::make_shared<uammd::ParticleGroup>(pd, "All");
+    this->dppoisson = std::make_shared<DPPoissonSlab>(pd, par);
     tmp.resize(numberParticles);
     CudaSafeCall(cudaStreamCreate(&st));
   }
@@ -47,18 +45,23 @@ struct UAMMD {
   void computeForce(py::array_t<real> h_pos, py::array_t<real> h_charges, py::array_t<real> h_forces){
     {
       auto pos = pd->getPos(uammd::access::location::gpu, uammd::access::mode::write);
-      thrust::copy((uammd::real3*)h_pos.data(), (uammd::real3*)h_pos.data() + numberParticles, tmp.begin());
-      thrust::transform(thrust::cuda::par.on(st), tmp.begin(), tmp.end(), pos.begin(), Real3ToReal4());
+      thrust::copy((uammd::real3*)h_pos.data(),
+		   (uammd::real3*)h_pos.data() + numberParticles,
+		   tmp.begin());
+      thrust::transform(thrust::cuda::par.on(st),
+			tmp.begin(), tmp.end(), pos.begin(), Real3ToReal4());
       auto charges = pd->getCharge(uammd::access::location::gpu, uammd::access::mode::write);
       
-      thrust::copy((uammd::real*)h_charges.data(), (uammd::real*)h_charges.data() + numberParticles,
+      thrust::copy((uammd::real*)h_charges.data(),
+		   (uammd::real*)h_charges.data() + numberParticles,
 		   thrust::device_ptr<real>(charges.begin()));
       auto force = pd->getForce(uammd::access::location::gpu, uammd::access::mode::write);
       thrust::fill(thrust::cuda::par.on(st),force.begin(), force.end(), uammd::real4());
     }
-    dppoisson->sumForce(st);
+    dppoisson->sum({true, false, false}, st);
     auto force = pd->getForce(uammd::access::location::gpu, uammd::access::mode::read);
-    thrust::transform(thrust::cuda::par.on(st),force.begin(), force.end(), tmp.begin(), Real4ToReal3());
+    thrust::transform(thrust::cuda::par.on(st),
+		      force.begin(), force.end(), tmp.begin(), Real4ToReal3());
     thrust::copy(tmp.begin(), tmp.end(), (uammd::real3*)h_forces.mutable_data());
   }
   

@@ -112,22 +112,14 @@ class LeimkuhlerWithMobility: public BD::BaseBrownianIntegrator{
 public:
   
   LeimkuhlerWithMobility(shared_ptr<ParticleData> pd,
-			 shared_ptr<ParticleGroup> pg,
-			 shared_ptr<System> sys,
 			 Parameters par,
 			 std::shared_ptr<SelfMobility> selfMobilityFactor):
-    BaseBrownianIntegrator(pd, pg, sys, par),
+    BaseBrownianIntegrator(pd, par),
     selfMobilityFactor(selfMobilityFactor){
     this->seed = sys->rng().next32();
     this->steps = 0;
     sys->log<System::MESSAGE>("[BD::LeimkuhlerMobility] Initialized with seed %u", this->seed);
   }
-
-  LeimkuhlerWithMobility(shared_ptr<ParticleData> pd,
-			 shared_ptr<System> sys,
-			 Parameters par,
-			 std::shared_ptr<SelfMobility> selfMobilityFactor):
-    LeimkuhlerWithMobility(pd, std::make_shared<ParticleGroup>(pd, sys), sys, par, selfMobilityFactor){}
 
   void forwardTime() override;
 
