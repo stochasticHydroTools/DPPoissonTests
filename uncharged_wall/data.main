@@ -2,6 +2,7 @@
 #Units:
 #Charge e=1.602e-19C
 #Energy kT=4.11e-21J
+#Temperature: kT/k = 298K (The temperature that gives the thermal energy above)
 #Longitude a=2.125e-10m
 #Time: tau_D0=hydroRadius^2/D
 #Water relative permittivity is 78.5
@@ -19,7 +20,7 @@ permitivityTop 2.365342959985713e-02
 permitivityBottom 3.013175745204730e-04 
 
 #Diffusion coefficient is D=kT/(6*pi*vis*hydroRadius)
-temperature 1.0
+temperature 1.0 
 viscosity   0.053051647697298
 hydrodynamicRadius 1.0
 
@@ -40,7 +41,13 @@ r_m 1.5
 p 6
 sigma 2
 
+wall_U0 0.700471
+wall_r_m 1.5
+wall_p 6
+wall_sigma 2
+
 #DPPoisson splitting, number of grid cells. You may switch this parameter to "split" instead. 
 Nxy 72
 
 
+BrownianUpdateRule Leimkuhler

@@ -40,22 +40,24 @@ The following options are available:
  permitivityBottom: Below z=-H/2
  permitivityTop: Above z=H/2
 
- temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius)
+ temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.  
  viscosity: For BD
  hydrodynamicRadius: For BD
  dt: Time step for the BD integrator
  
  U0, sigma, r_m, p: Parameters for the repulsive interaction. If U0=0 the steric repulsion is turned off. 
- 
+
+ wall_U0, wall_sigma, wall_r_m, wall_p Parameters for the ion-wall repulsive interaction.   
+ noWall Optional, if this flag is present particles will not be repelled by the wall.   
+
  numberSteps: The simulation will run for this many steps
  printSteps: If greater than 0, the positions and forces will be printed every printSteps steps
  relaxSteps: The simulation will run without printing for this many steps.
  
  outfile: Positions and charge will be written to this file, each snapshot is separated by a #, each line will contain X Y Z Charge. Can be /dev/stdout to print to screen.
  forcefile: Optional, if present forces acting on particles will written to this file.
- readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.
- 
- noWall: Optional, if this flag is present particles will not be repelled by the wall.
+ readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe. 
+
  triplyPeriodic: Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.
 
  split: The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.
@@ -67,6 +69,8 @@ The following options are available:
  0.0 1.0 1.0 1.0
  1.0 1.0 1.0 1.0
 -------------------
+
+ BrownianUpdateRule: Optional. Can either be EulerMaruyama (default) or Leimkuhler.
 
  idealParticles: Optional. If this flag is present particles will not interact between them in any way.
 
@@ -85,7 +89,7 @@ The following options are available:
 #include"Interactor/SpectralEwaldPoisson.cuh"
 #include"Interactor/ExternalForces.cuh"
 #include"Integrator/BrownianDynamics.cuh"
-#include"Leimkuhler.cuh"
+#include"BDWithThermalDrift.cuh"
 #include"utils/InputFile.h"
 #include"Interactor/DoublyPeriodic/DPPoissonSlab.cuh"
 #include <fstream>
@@ -131,13 +135,14 @@ struct Parameters{
   real gw;
   real split = -1;
   real U0, sigma, r_m, p, cutOff;
+  real wall_U0, wall_sigma, wall_r_m, wall_p, wall_cutOff;
   
   std::string outfile, readFile, forcefile;
 
   bool noWall = false;
   bool triplyPeriodic=false;
 
-  std::string mobilityFile;
+  std::string mobilityFile, brownianUpdateRule = "EulerMaruyama";
   bool idealParticles=false;
 };
 
@@ -202,12 +207,20 @@ auto createIntegrator(UAMMD sim){
   par.dt = sim.par.dt;
   std::shared_ptr<Integrator> integrator;
   if(sim.par.mobilityFile.empty()){
-    using BDMethod = BD::Leimkuhler;
-    integrator =  std::make_shared<BDMethod>(sim.pd, par);
+    if(sim.par.brownianUpdateRule== "Leimkuhler"){
+      using BDMethod = BD::Leimkuhler;
+      integrator =  std::make_shared<BDMethod>(sim.pd, par);
+    }
+    else if(sim.par.brownianUpdateRule== "EulerMaruyama"){
+      using BDMethod = BD::EulerMaruyama;
+      integrator =  std::make_shared<BDMethod>(sim.pd, par);
+    }
   }
   else{
     auto selfMobilityFactor = std::make_shared<SelfMobility>(sim.par.mobilityFile, sim.par.H);
-    integrator = std::make_shared<LeimkuhlerWithMobility>(sim.pd, par, selfMobilityFactor);
+    integrator = std::make_shared<BDWithThermalDrift>(sim.pd, par,
+							  sim.par.brownianUpdateRule,
+							  selfMobilityFactor);
   }
   return integrator;
 }
@@ -261,11 +274,11 @@ auto createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
 
 auto createWallRepulsionInteractor(UAMMD sim){
   RepulsivePotentialFunctor::PairParameters potpar;
-  potpar.cutOff2 = sim.par.cutOff*sim.par.cutOff;
-  potpar.sigma = sim.par.sigma;
-  potpar.U0 = sim.par.U0;
-  potpar.r_m = sim.par.r_m;
-  potpar.p = sim.par.p;
+  potpar.cutOff2 = sim.par.wall_cutOff*sim.par.wall_cutOff;
+  potpar.sigma = sim.par.wall_sigma;
+  potpar.U0 = sim.par.wall_U0;
+  potpar.r_m = sim.par.wall_r_m;
+  potpar.p = sim.par.wall_p;
   return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, make_shared<RepulsiveWall>(sim.par.H, potpar));
 }
 
@@ -475,12 +488,22 @@ Parameters readParameters(std::string datamain){
   in.getOption("upsampling", InputFile::Optional)>>par.upsampling;
   if(in.getOption("noWall", InputFile::Optional)){
     par.noWall= true;
+  }
+  else{
+    in.getOption("wall_U0", InputFile::Required)>>par.wall_U0;
+    in.getOption("wall_r_m", InputFile::Required)>>par.wall_r_m;
+    in.getOption("wall_p", InputFile::Required)>>par.wall_p;
+    in.getOption("wall_sigma", InputFile::Required)>>par.wall_sigma;
+    par.wall_cutOff = par.wall_sigma*pow(2,1.0/par.wall_p);
   }  
   if(par.split < 0 and par.Nxy < 0){
     System::log<System::CRITICAL>("ERROR: I need either Nxy or split");    
   }
   par.cutOff = par.sigma*pow(2,1.0/par.p);
   in.getOption("useMobilityFromFile", InputFile::Optional)>>par.mobilityFile;
+  if(not par.mobilityFile.empty()){
+    in.getOption("BrownianUpdateRule", InputFile::Optional)>>par.brownianUpdateRule;
+  }
   if(in.getOption("idealParticles", InputFile::Optional))
     par.idealParticles = true;
   return par;

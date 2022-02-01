@@ -39,7 +39,13 @@ r_m 1.0
 p 2
 sigma 2
 
+wall_U0 2.232749391727494e-01
+wall_r_m 1.0
+wall_p 2
+wall_sigma 2
+
 #DPPoisson splitting, number of grid cells. You may switch this parameter to "split" instead. 
 Nxy 72
 
+BrownianUpdateRule Leimkuhler
 

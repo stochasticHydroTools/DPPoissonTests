@@ -45,12 +45,15 @@ The following options are available:
 **permitivityBottom** Below z=-H/2  
 **permitivityTop** Above z=H/2  
 
-**temperature** Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius)  
+**temperature** Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.  
 **viscosity** For BD  
 **hydrodynamicRadius** For BD  
 **dt** Time step for the BD integrator  
 
-**U0, sigma, r_m, p** Parameters for the repulsive interaction. If U0=0 the steric repulsion is turned off.   
+**U0, sigma, r_m, p** Parameters for the ion-ion repulsive interaction. If U0=0 the steric repulsion is turned off.   
+
+**wall_U0, wall_sigma, wall_r_m, wall_p** Parameters for the ion-wall repulsive interaction.   
+**noWall** Optional, if this flag is present particles will not be repelled by the wall.  
 
 **numberSteps** The simulation will run for this many steps  
 **printSteps** If greater than 0, the positions and forces will be printed every printSteps steps  
@@ -60,7 +63,6 @@ The following options are available:
 **forcefile** Optional, if present forces acting on particles will written to this file.  
 **readFile** Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.  
 
-**noWall** Optional, if this flag is present particles will not be repelled by the wall.  
 **triplyPeriodic** Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.  
 
 **split** The Ewald splitting parameter. It is mandatory if triply periodic mode is enabled.  
@@ -79,6 +81,7 @@ The following accuracy options are optional, the defaults provide a tolerance of
  1.0 1.0  1.0 1.0
 -------------------
 ```  
+**BrownianUpdateRule**: Optional. Can either be EulerMaruyama (default) or Leimkuhler.
  **idealParticles**: Optional. If this flag is present particles will not interact between them in any way.  
   
 ### Python interface

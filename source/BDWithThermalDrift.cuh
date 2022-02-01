@@ -105,20 +105,34 @@ public:
 
 };
 
+namespace BDWithThermalDrift_ns{
+  enum class update_rules{leimkuhler, euler_maruyama};
+}
 //Implements the algorithm in eq. 45 of [2]. Allows for a position-dependent mobility
-class LeimkuhlerWithMobility: public BD::BaseBrownianIntegrator{
+class BDWithThermalDrift: public BD::BaseBrownianIntegrator{
   std::shared_ptr<SelfMobility> selfMobilityFactor;
   thrust::device_vector<real3> noisePrevious;
+  BDWithThermalDrift_ns::update_rules brownian_rule;
 public:
   
-  LeimkuhlerWithMobility(shared_ptr<ParticleData> pd,
+  BDWithThermalDrift(shared_ptr<ParticleData> pd,
 			 Parameters par,
+			 std::string BrownianUpdateRule,
 			 std::shared_ptr<SelfMobility> selfMobilityFactor):
     BaseBrownianIntegrator(pd, par),
     selfMobilityFactor(selfMobilityFactor){
     this->seed = sys->rng().next32();
     this->steps = 0;
-    sys->log<System::MESSAGE>("[BD::LeimkuhlerMobility] Initialized with seed %u", this->seed);
+    if(BrownianUpdateRule == "EulerMaruyama"){
+      brownian_rule = BDWithThermalDrift_ns::update_rules::euler_maruyama;
+    }
+    else if(BrownianUpdateRule == "Leimkuhler"){
+      brownian_rule = BDWithThermalDrift_ns::update_rules::leimkuhler;
+    }
+    else{
+      throw std::runtime_error("[BDWithThermalDrift] Invalid update rule, only EulerMaruyama or Leimkuhler are available");
+    }
+    sys->log<System::MESSAGE>("[BDWithThermalDrift] Initialized with seed %u in %s mode", this->seed, BrownianUpdateRule.c_str());
   }
 
   void forwardTime() override;
@@ -128,13 +142,15 @@ private:
 };
 
 
-namespace Leimkuhler_ns{
+namespace BDWithThermalDrift_ns{
   __device__ real3 genNoise(int i, uint stepNum, uint seed){
     Saru rng(i, stepNum, seed);
     return make_real3(rng.gf(0, 1), rng.gf(0, 1).x);
   }
+  
   //This integration scheme allows for a self mobility depending on the position.
   //With the associated non-zero thermal drift term.
+  template<update_rules rule>
   __global__ void integrateGPU(real4* pos,
 			       ParticleGroup::IndexIterator indexIterator,
 			       const int* originalIndex,
@@ -162,9 +178,14 @@ namespace Leimkuhler_ns{
     if(temperature > 0){
       int ori = originalIndex[i];
       const auto Bn = sqrt(real(2.0)*temperature*M*dt);
-      const auto dWn = genNoise(ori, stepNum, seed);
-      R += real(0.5)*(Bn*dWn+noisePrevious[ori]) + temperature*dt*m0*factor.second;
-      noisePrevious[ori] = Bn*dWn;
+      const auto dWn = genNoise(ori, stepNum, seed);      
+      if(rule == update_rules::euler_maruyama){
+	R += Bn*dWn + temperature*dt*m0*factor.second;
+      }
+      else if(rule ==update_rules::leimkuhler){	
+	R += real(0.5)*(Bn*dWn+noisePrevious[ori]) + temperature*dt*m0*factor.second;
+	noisePrevious[ori] = Bn*dWn;
+      }
     }
     pos[i].x = R.x;
     pos[i].y = R.y;
@@ -174,7 +195,7 @@ namespace Leimkuhler_ns{
 
 }
 
-void LeimkuhlerWithMobility::forwardTime(){
+void BDWithThermalDrift::forwardTime(){
   steps++;
   sys->log<System::DEBUG1>("[BD::Leimkuhler] Performing integration step %d", steps);
   updateInteractors();
@@ -182,7 +203,7 @@ void LeimkuhlerWithMobility::forwardTime(){
   updatePositions();
 }
 
-void LeimkuhlerWithMobility::updatePositions(){
+void BDWithThermalDrift::updatePositions(){
   int numberParticles = pg->getNumberParticles();
   noisePrevious.resize(numberParticles);
   if(steps==1)
@@ -195,18 +216,23 @@ void LeimkuhlerWithMobility::updatePositions(){
   auto pos = pd->getPos(access::location::gpu, access::mode::readwrite);
   auto force = pd->getForce(access::location::gpu, access::mode::read);
   auto originalIndex = pd->getIdOrderedIndices(access::location::gpu);
-  Leimkuhler_ns::integrateGPU<<<Nblocks, Nthreads, 0, st>>>(pos.raw(),
-							    groupIterator,
-							    originalIndex,
-							    force.raw(),
-							    Kx, Ky, Kz,
-							    selfMobility,
-							    *selfMobilityFactor,
-							    thrust::raw_pointer_cast(noisePrevious.data()),
-							    d_radius,
-							    dt,
-							    is2D,
-							    temperature,
-							    numberParticles,
-							    steps, seed);
+  using namespace BDWithThermalDrift_ns;
+  auto foo =  integrateGPU<update_rules::euler_maruyama>;
+  if(brownian_rule == update_rules::leimkuhler){
+    foo =  integrateGPU<update_rules::leimkuhler>;
+  }
+  foo<<<Nblocks, Nthreads, 0, st>>>(pos.raw(),
+				    groupIterator,
+				    originalIndex,
+				    force.raw(),
+				    Kx, Ky, Kz,
+				    selfMobility,
+				    *selfMobilityFactor,
+				    thrust::raw_pointer_cast(noisePrevious.data()),
+				    d_radius,
+				    dt,
+				    is2D,
+				    temperature,
+				    numberParticles,
+				    steps, seed);
 }
