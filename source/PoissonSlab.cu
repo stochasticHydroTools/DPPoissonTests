@@ -48,6 +48,7 @@ The following options are available:
  U0, sigma, r_m, p: Parameters for the repulsive interaction. If U0=0 the steric repulsion is turned off. 
 
  wall_U0, wall_sigma, wall_r_m, wall_p Parameters for the ion-wall repulsive interaction.   
+ imageDistanceMultiplier Multiplies the distance of the particles to the wall by this amount. For instance, if 2, particles interact with their images, if 1, particles are repelled to the wall (as if the image was at the wall's height)
  noWall Optional, if this flag is present particles will not be repelled by the wall.   
 
  numberSteps: The simulation will run for this many steps
@@ -101,11 +102,13 @@ using std::endl;
 class RepulsiveWall{
   RepulsivePotentialFunctor::PairParameters params;
   real H;
+  real imageDistanceMultiplier = 2.0; //Controls the distance of the image ---->   0  |  0, if this parameter is 2, particles interact with images, if 1, image particles are located at the wall height.
 public:
-  RepulsiveWall(real H, RepulsivePotentialFunctor::PairParameters ip):H(H),params(ip){}
+  RepulsiveWall(real H, RepulsivePotentialFunctor::PairParameters ip, real imageDistanceMultiplier):
+    H(H),params(ip),imageDistanceMultiplier(imageDistanceMultiplier){}
 
   __device__ ForceEnergyVirial sum(Interactor::Computables comp, real4 pos /*, real mass */){
-    real distanceToImage = abs(abs(pos.z) - H * real(0.5))*real(2.0);
+    real distanceToImage = abs(abs(pos.z) - H * real(0.5))*imageDistanceMultiplier;
     real fz = RepulsivePotentialFunctor::force(distanceToImage * distanceToImage, params) * distanceToImage;
     ForceEnergyVirial fev;
     fev.force = make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));    
@@ -136,6 +139,7 @@ struct Parameters{
   real split = -1;
   real U0, sigma, r_m, p, cutOff;
   real wall_U0, wall_sigma, wall_r_m, wall_p, wall_cutOff;
+  real imageDistanceMultiplier;
   
   std::string outfile, readFile, forcefile;
 
@@ -279,7 +283,7 @@ auto createWallRepulsionInteractor(UAMMD sim){
   potpar.U0 = sim.par.wall_U0;
   potpar.r_m = sim.par.wall_r_m;
   potpar.p = sim.par.wall_p;
-  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, make_shared<RepulsiveWall>(sim.par.H, potpar));
+  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, make_shared<RepulsiveWall>(sim.par.H, potpar, sim.par.imageDistanceMultiplier));
 }
 
 auto createPotential(UAMMD sim){
@@ -494,6 +498,7 @@ Parameters readParameters(std::string datamain){
     in.getOption("wall_r_m", InputFile::Required)>>par.wall_r_m;
     in.getOption("wall_p", InputFile::Required)>>par.wall_p;
     in.getOption("wall_sigma", InputFile::Required)>>par.wall_sigma;
+    in.getOption("imageDistanceMultiplier", InputFile::Required)>>par.imageDistanceMultiplier;
     par.wall_cutOff = par.wall_sigma*pow(2,1.0/par.wall_p);
   }  
   if(par.split < 0 and par.Nxy < 0){

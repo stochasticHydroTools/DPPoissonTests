@@ -53,6 +53,7 @@ The following options are available:
 **U0, sigma, r_m, p** Parameters for the ion-ion repulsive interaction. If U0=0 the steric repulsion is turned off.   
 
 **wall_U0, wall_sigma, wall_r_m, wall_p** Parameters for the ion-wall repulsive interaction.   
+**imageDistanceMultiplier** Multiplies the distance of the particles to the wall by this amount. For instance, if 2, particles interact with their images, if 1, particles are repelled to the wall (as if the image was at the wall's height).  
 **noWall** Optional, if this flag is present particles will not be repelled by the wall.  
 
 **numberSteps** The simulation will run for this many steps  
