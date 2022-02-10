@@ -82,7 +82,7 @@ The following accuracy options are optional, the defaults provide a tolerance of
  1.0 1.0  1.0 1.0
 -------------------
 ```  
-**BrownianUpdateRule**: Optional. Can either be EulerMaruyama (default) or Leimkuhler.
+**BrownianUpdateRule**: Optional. Can either be EulerMaruyama (default) or Leimkuhler.  
  **idealParticles**: Optional. If this flag is present particles will not interact between them in any way.  
   
 ### Python interface
