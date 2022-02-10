@@ -116,18 +116,18 @@ class BDWithThermalDrift: public BD::BaseBrownianIntegrator{
 public:
   
   BDWithThermalDrift(shared_ptr<ParticleData> pd,
-			 Parameters par,
-			 std::string BrownianUpdateRule,
-			 std::shared_ptr<SelfMobility> selfMobilityFactor):
+		     Parameters par,
+		     std::string BrownianUpdateRule,
+		     std::shared_ptr<SelfMobility> selfMobilityFactor):
     BaseBrownianIntegrator(pd, par),
     selfMobilityFactor(selfMobilityFactor){
     this->seed = sys->rng().next32();
     this->steps = 0;
     if(BrownianUpdateRule == "EulerMaruyama"){
-      brownian_rule = BDWithThermalDrift_ns::update_rules::euler_maruyama;
+      this->brownian_rule = BDWithThermalDrift_ns::update_rules::euler_maruyama;
     }
     else if(BrownianUpdateRule == "Leimkuhler"){
-      brownian_rule = BDWithThermalDrift_ns::update_rules::leimkuhler;
+      this->brownian_rule = BDWithThermalDrift_ns::update_rules::leimkuhler;
     }
     else{
       throw std::runtime_error("[BDWithThermalDrift] Invalid update rule, only EulerMaruyama or Leimkuhler are available");
@@ -155,13 +155,11 @@ namespace BDWithThermalDrift_ns{
 			       ParticleGroup::IndexIterator indexIterator,
 			       const int* originalIndex,
 			       const real4* force,
-			       real3 Kx, real3 Ky, real3 Kz,
 			       real selfMobility,
 			       SelfMobility selfMobilityFactor,
 			       real3* noisePrevious,
 			       real* radius,
 			       real dt,
-			       bool is2D,
 			       real temperature,
 			       int N,
 			       uint stepNum, uint seed){
@@ -170,11 +168,10 @@ namespace BDWithThermalDrift_ns{
     int i = indexIterator[id];
     real3 R = make_real3(pos[i]);
     const real3 F = make_real3(force[i]);
-    const real3 KR = make_real3(dot(Kx, R), dot(Ky, R), dot(Kz, R));
     const auto factor = selfMobilityFactor(R);
     const real m0 = selfMobility*(radius?(real(1.0)/radius[i]):real(1.0));
     const real3 M = m0*factor.first;
-    R += dt*( KR + M*F );
+    R += dt*(M*F);
     if(temperature > 0){
       int ori = originalIndex[i];
       const auto Bn = sqrt(real(2.0)*temperature*M*dt);
@@ -189,8 +186,7 @@ namespace BDWithThermalDrift_ns{
     }
     pos[i].x = R.x;
     pos[i].y = R.y;
-    if(!is2D)
-      pos[i].z = R.z;
+    pos[i].z = R.z;
   }
 
 }
@@ -225,13 +221,11 @@ void BDWithThermalDrift::updatePositions(){
 				    groupIterator,
 				    originalIndex,
 				    force.raw(),
-				    Kx, Ky, Kz,
 				    selfMobility,
 				    *selfMobilityFactor,
 				    thrust::raw_pointer_cast(noisePrevious.data()),
 				    d_radius,
 				    dt,
-				    is2D,
 				    temperature,
 				    numberParticles,
 				    steps, seed);

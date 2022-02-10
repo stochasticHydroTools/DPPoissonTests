@@ -223,8 +223,8 @@ auto createIntegrator(UAMMD sim){
   else{
     auto selfMobilityFactor = std::make_shared<SelfMobility>(sim.par.mobilityFile, sim.par.H);
     integrator = std::make_shared<BDWithThermalDrift>(sim.pd, par,
-							  sim.par.brownianUpdateRule,
-							  selfMobilityFactor);
+						      sim.par.brownianUpdateRule,
+						      selfMobilityFactor);
   }
   return integrator;
 }
@@ -506,9 +506,7 @@ Parameters readParameters(std::string datamain){
   }
   par.cutOff = par.sigma*pow(2,1.0/par.p);
   in.getOption("useMobilityFromFile", InputFile::Optional)>>par.mobilityFile;
-  if(not par.mobilityFile.empty()){
-    in.getOption("BrownianUpdateRule", InputFile::Optional)>>par.brownianUpdateRule;
-  }
+  in.getOption("BrownianUpdateRule", InputFile::Optional)>>par.brownianUpdateRule;
   if(in.getOption("idealParticles", InputFile::Optional))
     par.idealParticles = true;
   return par;
