@@ -37,8 +37,9 @@ The following options are available:
  H: The width of the domain
  Lxy: The dimensions of the box in XY
  permitivity: Permittivity inside the slab (only one used in triply periodic mode)
- permitivityBottom: Below z=-H/2
- permitivityTop: Above z=H/2
+ permitivityBottom Below z=-H/2. If the value is negative it means metallic boundary (infinite permittivity).  
+ permitivityTop Above z=H/2. If the value is negative it means metallic boundary (infinite permittivity).  
+ bottomWallSurfaceValue The zero mode value of the Fourier transform of the bottom wall surface value (potential when the boundary is metallic and surface charge otherwise).  
 
  temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.  
  viscosity: For BD
@@ -94,6 +95,7 @@ The following options are available:
 #include"utils/InputFile.h"
 #include"Interactor/DoublyPeriodic/DPPoissonSlab.cuh"
 #include <fstream>
+#include <limits>
 #include<random>
 using namespace uammd;
 using std::make_shared;
@@ -131,6 +133,8 @@ struct Parameters{
   real tolerance = 1e-4;
   real temperature;
   real permitivity, permitivityBottom, permitivityTop;
+
+  real bottomWallSurfaceValue = 0;
   
   int numberSteps, printSteps, relaxSteps;
   real dt, viscosity, hydrodynamicRadius;
@@ -236,7 +240,13 @@ auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){
   DPPoissonSlab::Permitivity perm;
   perm.inside = sim.par.permitivity;
   perm.top = sim.par.permitivityTop;
+  if(sim.par.permitivityTop<0){ //Metallic boundary
+    perm.top = std::numeric_limits<real>::infinity();
+  }
   perm.bottom = sim.par.permitivityBottom;
+  if(sim.par.permitivityBottom<0){ //Metallic boundary
+    perm.bottom = std::numeric_limits<real>::infinity();
+  }
   par.permitivity = perm;
   par.gw = sim.par.gw;
   par.tolerance = sim.par.tolerance;
@@ -260,7 +270,12 @@ auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){
   }
   par.support = sim.par.support;
   par.numberStandardDeviations = sim.par.numberStandardDeviations;
-  return std::make_shared<DPPoissonSlab>(sim.pd, par);
+  auto dppoisson = std::make_shared<DPPoissonSlab>(sim.pd, par);
+  if(sim.par.bottomWallSurfaceValue){
+    System::log<System::MESSAGE>("[DPPoisson] Setting the bottom wall zero mode Fourier value to %g", sim.par.bottomWallSurfaceValue);
+    dppoisson->setSurfaceValuesZeroModeFourier({0, 0, sim.par.bottomWallSurfaceValue, 0});
+  }
+  return dppoisson;
 }
 
 auto createTriplyPeriodicElectrostaticInteractor(UAMMD sim){
@@ -509,6 +524,7 @@ Parameters readParameters(std::string datamain){
   in.getOption("BrownianUpdateRule", InputFile::Optional)>>par.brownianUpdateRule;
   if(in.getOption("idealParticles", InputFile::Optional))
     par.idealParticles = true;
+  in.getOption("bottomWallSurfaceValue", InputFile::Optional)>>par.bottomWallSurfaceValue;   
   return par;
 }
 
