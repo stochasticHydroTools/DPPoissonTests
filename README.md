@@ -63,6 +63,7 @@ The following options are available:
 
 **outfile** Positions and charge will be written to this file, each snapshot is separated by a #, each line will contain X Y Z Charge. Can be /dev/stdout to print to screen.  
 **forcefile** Optional, if present forces acting on particles will written to this file.  
+**fieldfile** Optional, if present electric field acting on particles will written to this file.  
 **readFile** Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.  
 
 **triplyPeriodic** Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.  

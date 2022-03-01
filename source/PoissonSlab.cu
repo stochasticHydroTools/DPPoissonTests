@@ -58,6 +58,7 @@ The following options are available:
  
  outfile: Positions and charge will be written to this file, each snapshot is separated by a #, each line will contain X Y Z Charge. Can be /dev/stdout to print to screen.
  forcefile: Optional, if present forces acting on particles will written to this file.
+ fieldfile: Optional, if present electric field acting on particles will written to this file.
  readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe. 
 
  triplyPeriodic: Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.
@@ -145,7 +146,7 @@ struct Parameters{
   real wall_U0, wall_sigma, wall_r_m, wall_p, wall_cutOff;
   real imageDistanceMultiplier;
   
-  std::string outfile, readFile, forcefile;
+  std::string outfile, readFile, forcefile, fieldfile;
 
   bool noWall = false;
   bool triplyPeriodic=false;
@@ -328,23 +329,28 @@ template<class UsePotential> auto createShortRangeInteractor(UAMMD sim){
   return pairForces;
 }
 
-void writeSimulation(UAMMD sim){ 
+void writeSimulation(UAMMD sim, std::vector<real4> fieldAtParticles){ 
   auto pos = sim.pd->getPos(access::location::cpu, access::mode::read);
   auto charge = sim.pd->getCharge(access::location::cpu, access::mode::read);
   auto force = sim.pd->getForce(access::location::cpu, access::mode::read);
   static std::ofstream out(sim.par.outfile);
   static std::ofstream outf(sim.par.forcefile);
+  static std::ofstream outfield(sim.par.fieldfile);
   Box box(make_real3(sim.par.Lxy, sim.par.Lxy, sim.par.H));
   box.setPeriodicity(1,1,sim.par.triplyPeriodic?1:0);
   real3 L = box.boxSize;
   out<<"#Lx="<<L.x*0.5<<";Ly="<<L.y*0.5<<";Lz="<<L.z*0.5<<";"<<std::endl;
-  outf<<"#"<<std::endl;
+  if(outf.good())outf<<"#"<<std::endl;
+  if(outfield.good())outfield<<"#"<<std::endl;
   fori(0, sim.par.numberParticles){
     real3 p = box.apply_pbc(make_real3(pos[i]));
     real q = charge[i];
     out<<std::setprecision(2*sizeof(real))<<p<<" "<<q<<"\n";
     if(outf.good()){
       outf<<std::setprecision(2*sizeof(real))<<force[i]<<"\n";
+    }
+    if(outfield.good() and fieldAtParticles.size()>0){
+      outfield<<std::setprecision(2*sizeof(real))<<fieldAtParticles[i]<<"\n";
     }
   }
   out<<std::flush;
@@ -383,12 +389,14 @@ void saveConfiguration(UAMMD sim) {
 int main(int argc, char *argv[]){  
   auto sim = initialize(argc, argv);
   auto bd = createIntegrator(sim);
+  std::shared_ptr<DPPoissonSlab> dpslab;
   if(not sim.par.idealParticles){
     if(sim.par.triplyPeriodic){
       bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
     }
     else{
-      bd->addInteractor(createDoublyPeriodicElectrostaticInteractor(sim));
+      dpslab = createDoublyPeriodicElectrostaticInteractor(sim);
+      bd->addInteractor(dpslab);
     }
     if(sim.par.U0 > 0){
       bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
@@ -451,8 +459,14 @@ int main(int argc, char *argv[]){
 	saveConfiguration(sim);
       }
     }
-    if(sim.par.printSteps > 0 and j%sim.par.printSteps==0){
-      writeSimulation(sim);
+    if(sim.par.printSteps > 0 and j%sim.par.printSteps==0 and dpslab){
+      std::vector<real4> fieldAtParticles;
+      if(not sim.par.fieldfile.empty()){
+	auto d_field = dpslab->computeFieldAtParticles();
+	fieldAtParticles.resize(d_field.size());
+	thrust::copy(d_field.begin(), d_field.end(), fieldAtParticles.begin());
+      }
+      writeSimulation(sim, fieldAtParticles);
       numberRetriesThisStep=0;
       lastStepSaved=j;
       saveConfiguration(sim);
@@ -483,6 +497,7 @@ Parameters readParameters(std::string datamain){
   in.getOption("hydrodynamicRadius", InputFile::Required)>>par.hydrodynamicRadius;
   in.getOption("outfile", InputFile::Required)>>par.outfile;
   in.getOption("forcefile", InputFile::Optional)>>par.forcefile;
+  in.getOption("fieldfile", InputFile::Optional)>>par.fieldfile;
   in.getOption("U0", InputFile::Required)>>par.U0;
   in.getOption("r_m", InputFile::Required)>>par.r_m;
   in.getOption("p", InputFile::Required)>>par.p;
