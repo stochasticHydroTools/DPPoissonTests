@@ -459,9 +459,9 @@ int main(int argc, char *argv[]){
 	saveConfiguration(sim);
       }
     }
-    if(sim.par.printSteps > 0 and j%sim.par.printSteps==0 and dpslab){
+    if(sim.par.printSteps > 0 and j%sim.par.printSteps==0){
       std::vector<real4> fieldAtParticles;
-      if(not sim.par.fieldfile.empty()){
+      if(not sim.par.fieldfile.empty() and dpslab){
 	auto d_field = dpslab->computeFieldAtParticles();
 	fieldAtParticles.resize(d_field.size());
 	thrust::copy(d_field.begin(), d_field.end(), fieldAtParticles.begin());
