@@ -549,7 +549,7 @@ Parameters readParameters(std::string datamain){
   if(in.getOption("idealParticles", InputFile::Optional))
     par.idealParticles = true;
   in.getOption("bottomWallSurfaceValue", InputFile::Optional)>>par.bottomWallSurfaceValue;
-  in.getOption("printDPPoissonFarFieldZeroMode", InputFile::Optional)>>par.printDPPoissonFarFieldZeroModeFile;
+  in.getOption("printDPPoissonFarFieldZeroModeFile", InputFile::Optional)>>par.printDPPoissonFarFieldZeroModeFile;
   
   return par;
 }
