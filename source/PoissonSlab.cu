@@ -41,6 +41,7 @@ The following options are available:
  permitivityTop Above z=H/2. If the value is negative it means metallic boundary (infinite permittivity).  
  bottomWallSurfaceValue The zero mode value of the Fourier transform of the bottom wall surface value (potential when the boundary is metallic and surface charge otherwise).  
  printDPPoissonFarFieldZeroModeFile: If present the zero mode of the solution (for Ex, Ey, Ez and phi) in Fourier space for the Far Field in DPPoisson will be printed every printSteps to the provided fileName.
+ 
  temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.  
  viscosity: For BD
  hydrodynamicRadius: For BD
@@ -473,7 +474,7 @@ int main(int argc, char *argv[]){
 	auto zeroMode = dpslab->getK0Mode();
 	static std::ofstream zeroModeFile(sim.par.printDPPoissonFarFieldZeroModeFile);
 	zeroModeFile<<"#\n";
-	for(auto k0z: zeroMode) zeroModeFile<<k0z.x<<" "<<k0z.y<<" "<<k0z.z<<"\n";
+	for(auto k0z: zeroMode) zeroModeFile<<k0z.x<<" "<<k0z.y<<" "<<k0z.z<<" "<<k0z.w<<"\n";
       }
       writeSimulation(sim, fieldAtParticles);
       numberRetriesThisStep=0;
