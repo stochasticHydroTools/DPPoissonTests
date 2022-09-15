@@ -1,9 +1,8 @@
-
 /*Raul P. Pelaez 2020-2021. DP Poisson test
 
 This file encodes the following simulation:
 
-A group of Gaussian sources of charge with width gw evolve via Brownian Dynamics inside a doubly periodic domain of dimensions Lxy, Lxy, H (periodic in XY and open in Z). 
+A group of Gaussian sources of charge with width gw evolve via Brownian Dynamics inside a doubly periodic domain of dimensions Lxy, Lxy, H (periodic in XY and open in Z).
 Optionally, a flag can be passed in the input to enable triply periodic electrostatics.
 
 Sources interact via an electrostatic potential and repell each other via a repulsive LJ-like potential.
@@ -14,7 +13,7 @@ The three domains demarcated by the walls (above, between and below) may have di
 
 The repulsive potential can be found in RepulsivePotential.cuh (should be available along this file) and has the following form:
 U_{LJ}(r) = 4*U0* ( (sigma/r)^{2p} - (sigma/r)^p ) + U0
-The repulsive force is then defined by parts using F_{LJ}=-\partial U_{LJ}/\partial r 
+The repulsive force is then defined by parts using F_{LJ}=-\partial U_{LJ}/\partial r
 F(r<=rm) = F_{LJ}(r=rm);
 F(rm<r<=sigma*2^1/p) = F_{LJ}(r);
 F(r>sigma*2^1/p) = 0;
@@ -33,34 +32,34 @@ The following options are available:
 
  numberParticles: The number of charges in the simulation
  gw: The Gaussian width of the charges
- 
+
  H: The width of the domain
  Lxy: The dimensions of the box in XY
  permitivity: Permittivity inside the slab (only one used in triply periodic mode)
- permitivityBottom Below z=-H/2. If the value is negative it means metallic boundary (infinite permittivity).  
- permitivityTop Above z=H/2. If the value is negative it means metallic boundary (infinite permittivity).  
- bottomWallSurfaceValue The zero mode value of the Fourier transform of the bottom wall surface value (potential when the boundary is metallic and surface charge otherwise).  
+ permitivityBottom Below z=-H/2. If the value is negative it means metallic boundary (infinite permittivity).
+ permitivityTop Above z=H/2. If the value is negative it means metallic boundary (infinite permittivity).
+ bottomWallSurfaceValue The zero mode value of the Fourier transform of the bottom wall surface value (potential when the boundary is metallic and surface charge otherwise).
  printDPPoissonFarFieldZeroModeFile: If present the zero mode of the solution (for Ex, Ey, Ez and phi) in Fourier space for the Far Field in DPPoisson will be printed every printSteps to the provided fileName.
- 
- temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.  
+
+ temperature: Temperature for the Brownian Dynamics integrator, the diffusion coefficient will be D=T/(6*pi*viscosity*hydrodynamicRadius). This temperature is therefore given in units of energy.
  viscosity: For BD
  hydrodynamicRadius: For BD
  dt: Time step for the BD integrator
- 
- U0, sigma, r_m, p: Parameters for the repulsive interaction. If U0=0 the steric repulsion is turned off. 
 
- wall_U0, wall_sigma, wall_r_m, wall_p Parameters for the ion-wall repulsive interaction.   
+ U0, sigma, r_m, p: Parameters for the repulsive interaction. If U0=0 the steric repulsion is turned off.
+
+ wall_U0, wall_sigma, wall_r_m, wall_p Parameters for the ion-wall repulsive interaction.
  imageDistanceMultiplier Multiplies the distance of the particles to the wall by this amount. For instance, if 2, particles interact with their images, if 1, particles are repelled to the wall (as if the image was at the wall's height)
- noWall Optional, if this flag is present particles will not be repelled by the wall.   
+ noWall Optional, if this flag is present particles will not be repelled by the wall.
 
  numberSteps: The simulation will run for this many steps
  printSteps: If greater than 0, the positions and forces will be printed every printSteps steps
  relaxSteps: The simulation will run without printing for this many steps.
- 
+
  outfile: Positions and charge will be written to this file, each snapshot is separated by a #, each line will contain X Y Z Charge. Can be /dev/stdout to print to screen.
  forcefile: Optional, if present forces acting on particles will written to this file.
  fieldfile: Optional, if present electric field acting on particles will written to this file.
- readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe. 
+ readFile: Optional, if present charge positions will be read from this file with the format X Y Z Charge. numberParticles lines will be read. Can be /dev/stdin to read from pipe.
 
  triplyPeriodic: Optional, if this flag is present electrostatics will be solved with a triply periodic spectral ewald solver. Notice that many parameters are not needed in this mode and will be ignored.
 
@@ -81,11 +80,11 @@ The following options are available:
  The following accuracy options are optional, the defaults provide a tolerance of 5e-4:
  support: Number of support cells for the interpolation kernel. Default is 10.
  numberStandardDeviations: Gaussian truncation. Default is 4
- tolerance: In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4. 
+ tolerance: In doubly periodic, determines the cut off for the near field section of the algortihm. In triply periodic mode this represents the overall accuracy of the solver. Default is 1e-4.
  upsampling: The relation between the grid cell size and gt=sqrt(gw^2+1/(4*split^2)). h_xy= gt/upsampling. default is 1.2
 
 
- 
+
 */
 #include"uammd.cuh"
 #include"RepulsivePotential.cuh"
@@ -99,6 +98,8 @@ The following options are available:
 #include <fstream>
 #include <limits>
 #include<random>
+#include <string>
+#include <vector>
 using namespace uammd;
 using std::make_shared;
 using std::endl;
@@ -109,27 +110,32 @@ class RepulsiveWall{
   real imageDistanceMultiplier = 2.0; //Controls the distance of the image ---->   0  |  0, if this parameter is 2, particles interact with images, if 1, image particles are located at the wall height.
 public:
   RepulsiveWall(real H, RepulsivePotentialFunctor::PairParameters ip, real imageDistanceMultiplier):
-    H(H),params(ip),imageDistanceMultiplier(imageDistanceMultiplier){}
+    H(H), params(ip), imageDistanceMultiplier(imageDistanceMultiplier){}
 
-  __device__ ForceEnergyVirial sum(Interactor::Computables comp, real4 pos /*, real mass */){
+  //  __device__ ForceEnergyVirial sum(Interactor::Computables comp, real4 pos, real charge){
+  __device__ ForceEnergyVirial sum(Interactor::Computables comp, real4 pos){
     real distanceToImage = abs(abs(pos.z) - H * real(0.5))*imageDistanceMultiplier;
     real fz = RepulsivePotentialFunctor::force(distanceToImage * distanceToImage, params) * distanceToImage;
     ForceEnergyVirial fev;
-    fev.force = make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));    
+    fev.force = make_real3(0, 0, fz*(pos.z<0?real(-1.0):real(1.0)));
     return fev;
   }
 
   auto getArrays(ParticleData *pd){
-    auto pos = pd->getPos(access::gpu, access::read);
-    return std::make_tuple(pos.raw());
+    auto pos = pd->getPos(access::gpu, access::read); //{x,y,z, w}
+    return pos.begin();
+    //auto charges = pd->getCharge(access::gpu, access::read);
+    //return {pos.raw(), charges.raw()};
   }
 };
-  
+
+
+
 struct Parameters{
   int numberParticles;
   real Lxy, H;
   int Nxy = -1;
-  int support = 10;
+  int support = 12;
   real numberStandardDeviations = 4;
   real upsampling = 1.2;
   real tolerance = 1e-4;
@@ -138,7 +144,7 @@ struct Parameters{
 
   real bottomWallSurfaceValue = 0;
   std::string printDPPoissonFarFieldZeroModeFile;
-  
+
   int numberSteps, printSteps, relaxSteps;
   real dt, viscosity, hydrodynamicRadius;
 
@@ -147,7 +153,7 @@ struct Parameters{
   real U0, sigma, r_m, p, cutOff;
   real wall_U0, wall_sigma, wall_r_m, wall_p, wall_cutOff;
   real imageDistanceMultiplier;
-  
+
   std::string outfile, readFile, forcefile, fieldfile;
 
   bool noWall = false;
@@ -190,7 +196,7 @@ void initializeParticles(UAMMD sim){
     std::ifstream in(sim.par.readFile);
     fori(0, sim.par.numberParticles){
       in>>pos[i].x>>pos[i].y>>pos[i].z>>charge[i];
-      pos[i].w = 0; 
+      pos[i].w = 0;
     }
   }
   thrust::copy(pos.begin(), pos.end(), sim.savedPositions->begin());
@@ -203,11 +209,11 @@ UAMMD initialize(int argc, char *argv[]){
   auto now = static_cast<long long unsigned int>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
   sys->rng().setSeed(now);
   std::string datamain = argc>1?argv[1]:"data.main";
-  sim.par = readParameters(datamain); 
+  sim.par = readParameters(datamain);
   sim.pd = std::make_shared<ParticleData>(sim.par.numberParticles, sys);
   sim.savedPositions = std::make_shared<thrust::device_vector<real4>>();
   sim.savedPositions->resize(sim.par.numberParticles);
-  initializeParticles(sim); 
+  initializeParticles(sim);
   return sim;
 }
 
@@ -237,7 +243,7 @@ auto createIntegrator(UAMMD sim){
   return integrator;
 }
 
-auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){  
+auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){
   DPPoissonSlab::Parameters par;
   par.Lxy = make_real2(sim.par.Lxy);
   par.H = sim.par.H;
@@ -253,7 +259,7 @@ auto createDoublyPeriodicElectrostaticInteractor(UAMMD sim){
   }
   par.permitivity = perm;
   par.gw = sim.par.gw;
-  par.tolerance = sim.par.tolerance;  
+  par.tolerance = sim.par.tolerance;
   par.printK0Mode = not sim.par.printDPPoissonFarFieldZeroModeFile.empty();
   if(sim.par.split>0){
     par.split = sim.par.split;
@@ -303,8 +309,12 @@ auto createWallRepulsionInteractor(UAMMD sim){
   potpar.U0 = sim.par.wall_U0;
   potpar.r_m = sim.par.wall_r_m;
   potpar.p = sim.par.wall_p;
-  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, make_shared<RepulsiveWall>(sim.par.H, potpar, sim.par.imageDistanceMultiplier));
+  auto functor = make_shared<RepulsiveWall>(sim.par.H,
+					    potpar,
+					    sim.par.imageDistanceMultiplier);
+  return make_shared<ExternalForces<RepulsiveWall>>(sim.pd, functor);
 }
+
 
 auto createPotential(UAMMD sim){
   auto pot = std::make_shared<RepulsivePotential>();
@@ -333,7 +343,7 @@ template<class UsePotential> auto createShortRangeInteractor(UAMMD sim){
   return pairForces;
 }
 
-void writeSimulation(UAMMD sim, std::vector<real4> fieldAtParticles){ 
+void writeSimulation(UAMMD sim, std::vector<real4> fieldAtParticles){
   auto pos = sim.pd->getPos(access::location::cpu, access::mode::read);
   auto charge = sim.pd->getCharge(access::location::cpu, access::mode::read);
   auto force = sim.pd->getForce(access::location::cpu, access::mode::read);
@@ -363,13 +373,13 @@ void writeSimulation(UAMMD sim, std::vector<real4> fieldAtParticles){
 struct CheckOverlap {
   real H;
   CheckOverlap(real H):H(H){
-    
+
   }
 
   __device__ bool operator()(real4 p){
     return abs(p.z) >= (real(0.5)*H);
-  }  
-  
+  }
+
 };
 
 bool checkWallOverlap(UAMMD sim){
@@ -381,110 +391,114 @@ bool checkWallOverlap(UAMMD sim){
 }
 
 void restoreLastSavedConfiguration(UAMMD sim) {
-  auto pos = sim.pd->getPos(access::location::gpu, access::mode::write);  
-  thrust::copy(thrust::cuda::par, sim.savedPositions->begin(), sim.savedPositions->end(), pos.begin());  
+  auto pos = sim.pd->getPos(access::location::gpu, access::mode::write);
+  thrust::copy(thrust::cuda::par, sim.savedPositions->begin(), sim.savedPositions->end(), pos.begin());
 }
 
 void saveConfiguration(UAMMD sim) {
   auto pos = sim.pd->getPos(access::location::gpu, access::mode::read);
-  thrust::copy(thrust::cuda::par, pos.begin(), pos.end(), sim.savedPositions->begin()); 
+  thrust::copy(thrust::cuda::par, pos.begin(), pos.end(), sim.savedPositions->begin());
 }
 
-int main(int argc, char *argv[]){  
-  auto sim = initialize(argc, argv);
-  auto bd = createIntegrator(sim);
-  std::shared_ptr<DPPoissonSlab> dpslab;
-  if(not sim.par.idealParticles){
-    if(sim.par.triplyPeriodic){
-      bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
-    }
-    else{
-      dpslab = createDoublyPeriodicElectrostaticInteractor(sim);
-      bd->addInteractor(dpslab);
-    }
-    if(sim.par.U0 > 0){
-      bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
-    }
-  }
-  if(not sim.par.noWall){
-    bd->addInteractor(createWallRepulsionInteractor(sim));
-  }
-  int numberRetries=0;
-  int numberRetriesThisStep=0;
-  int lastStepSaved=0;
-  constexpr int saveRate = 100;
-  constexpr int maximumRetries = 1e6;
-  constexpr int maximumRetriesPerStep=1e4;
-  forj(0, sim.par.relaxSteps){
-    bd->forwardTime();
-    if(not sim.par.triplyPeriodic){
-      if(checkWallOverlap(sim)){
-	numberRetries++;
-	if(numberRetries>maximumRetries){
-	  throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
-	}
-	numberRetriesThisStep++;
-	if(numberRetriesThisStep>maximumRetriesPerStep){
-	  throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
-	}
-	j=lastStepSaved;
-	restoreLastSavedConfiguration(sim);
-	continue;
+int main(int argc, char *argv[]){
+  {
+    auto sim = initialize(argc, argv);
+    auto bd = createIntegrator(sim);
+    std::shared_ptr<DPPoissonSlab> dpslab;
+    if(not sim.par.idealParticles){
+      if(sim.par.triplyPeriodic){
+	bd->addInteractor(createTriplyPeriodicElectrostaticInteractor(sim));
       }
-      if(j%saveRate==0){
-	numberRetriesThisStep = 0;
-	lastStepSaved=j;
-	saveConfiguration(sim);
+      else{
+	dpslab = createDoublyPeriodicElectrostaticInteractor(sim);
+	bd->addInteractor(dpslab);
+      }
+      if(sim.par.U0 > 0){
+	bd->addInteractor(createShortRangeInteractor<RepulsivePotential>(sim));
       }
     }
-  }
-  Timer tim;
-  tim.tic();
-  lastStepSaved=0;
-  forj(0, sim.par.numberSteps){
-    bd->forwardTime();
-    if(not sim.par.triplyPeriodic){
-      if(checkWallOverlap(sim)){
-	numberRetries++;
-	if(numberRetries>maximumRetries){
-	  throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+    if(not sim.par.noWall){
+      auto ext = createWallRepulsionInteractor(sim);
+      bd->addInteractor(ext);
+    }
+    int numberRetries=0;
+    int numberRetriesThisStep=0;
+    int lastStepSaved=0;
+    constexpr int saveRate = 100;
+    constexpr int maximumRetries = 1e6;
+    constexpr int maximumRetriesPerStep=1e4;
+    forj(0, sim.par.relaxSteps){
+      bd->forwardTime();
+      if(not sim.par.triplyPeriodic){
+	if(checkWallOverlap(sim)){
+	  numberRetries++;
+	  if(numberRetries>maximumRetries){
+	    throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+	  }
+	  numberRetriesThisStep++;
+	  if(numberRetriesThisStep>maximumRetriesPerStep){
+	    throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+	  }
+	  j=lastStepSaved;
+	  restoreLastSavedConfiguration(sim);
+	  continue;
 	}
-	numberRetriesThisStep++;
-	if(numberRetriesThisStep>maximumRetriesPerStep){
-	  throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+	if(j%saveRate==0){
+	  numberRetriesThisStep = 0;
+	  lastStepSaved=j;
+	  saveConfiguration(sim);
 	}
-	j=lastStepSaved;
-	restoreLastSavedConfiguration(sim);
-	continue;
       }
-      if(j%saveRate==0){
+    }
+    Timer tim;
+    tim.tic();
+    lastStepSaved=0;
+    forj(0, sim.par.numberSteps){
+      bd->forwardTime();
+      if(not sim.par.triplyPeriodic){
+	if(checkWallOverlap(sim)){
+	  numberRetries++;
+	  if(numberRetries>maximumRetries){
+	    throw std::runtime_error("Too many steps with wall overlapping charges detected, aborting run");
+	  }
+	  numberRetriesThisStep++;
+	  if(numberRetriesThisStep>maximumRetriesPerStep){
+	    throw std::runtime_error("Cannot recover from configuration with wall overlapping charges, aborting run");
+	  }
+	  j=lastStepSaved;
+	  restoreLastSavedConfiguration(sim);
+	  continue;
+	}
+	if(j%saveRate==0){
+	  numberRetriesThisStep=0;
+	  lastStepSaved=j;
+	  saveConfiguration(sim);
+	}
+      }
+      if(sim.par.printSteps > 0 and j%sim.par.printSteps==0){
+	std::vector<real4> fieldAtParticles;
+	if(not sim.par.fieldfile.empty() and dpslab){
+	  auto d_field = dpslab->computeFieldAtParticles();
+	  fieldAtParticles.resize(d_field.size());
+	  thrust::copy(d_field.begin(), d_field.end(), fieldAtParticles.begin());
+	}
+	if(dpslab and not sim.par.printDPPoissonFarFieldZeroModeFile.empty()){
+	  auto zeroMode = dpslab->getK0Mode();
+	  static std::ofstream zeroModeFile(sim.par.printDPPoissonFarFieldZeroModeFile);
+	  zeroModeFile<<"#\n";
+	  for(auto k0z: zeroMode) zeroModeFile<<k0z.x<<" "<<k0z.y<<" "<<k0z.z<<" "<<k0z.w<<"\n";
+	}
+	writeSimulation(sim, fieldAtParticles);
 	numberRetriesThisStep=0;
 	lastStepSaved=j;
 	saveConfiguration(sim);
       }
     }
-    if(sim.par.printSteps > 0 and j%sim.par.printSteps==0){
-      std::vector<real4> fieldAtParticles;
-      if(not sim.par.fieldfile.empty() and dpslab){
-	auto d_field = dpslab->computeFieldAtParticles();
-	fieldAtParticles.resize(d_field.size());
-	thrust::copy(d_field.begin(), d_field.end(), fieldAtParticles.begin());
-      }
-      if(dpslab and not sim.par.printDPPoissonFarFieldZeroModeFile.empty()){
-	auto zeroMode = dpslab->getK0Mode();
-	static std::ofstream zeroModeFile(sim.par.printDPPoissonFarFieldZeroModeFile);
-	zeroModeFile<<"#\n";
-	for(auto k0z: zeroMode) zeroModeFile<<k0z.x<<" "<<k0z.y<<" "<<k0z.z<<" "<<k0z.w<<"\n";
-      }
-      writeSimulation(sim, fieldAtParticles);
-      numberRetriesThisStep=0;
-      lastStepSaved=j;
-      saveConfiguration(sim);
-    }
+    System::log<System::MESSAGE>("Number of rejected configurations: %d (%g%% of total)", numberRetries, (double)numberRetries/(sim.par.numberSteps + sim.par.relaxSteps)*100.0);
+    auto totalTime = tim.toc();
+    System::log<System::MESSAGE>("mean FPS: %.2f", sim.par.numberSteps/totalTime);
+    cudaDeviceSynchronize();
   }
-  System::log<System::MESSAGE>("Number of rejected configurations: %d (%g%% of total)", numberRetries, (double)numberRetries/(sim.par.numberSteps + sim.par.relaxSteps)*100.0);
-  auto totalTime = tim.toc();
-  System::log<System::MESSAGE>("mean FPS: %.2f", sim.par.numberSteps/totalTime);
   return 0;
 }
 
@@ -540,9 +554,9 @@ Parameters readParameters(std::string datamain){
     in.getOption("wall_sigma", InputFile::Required)>>par.wall_sigma;
     in.getOption("imageDistanceMultiplier", InputFile::Required)>>par.imageDistanceMultiplier;
     par.wall_cutOff = par.wall_sigma*pow(2,1.0/par.wall_p);
-  }  
+  }
   if(par.split < 0 and par.Nxy < 0){
-    System::log<System::CRITICAL>("ERROR: I need either Nxy or split");    
+    System::log<System::CRITICAL>("ERROR: I need either Nxy or split");
   }
   par.cutOff = par.sigma*pow(2,1.0/par.p);
   in.getOption("useMobilityFromFile", InputFile::Optional)>>par.mobilityFile;
@@ -551,9 +565,6 @@ Parameters readParameters(std::string datamain){
     par.idealParticles = true;
   in.getOption("bottomWallSurfaceValue", InputFile::Optional)>>par.bottomWallSurfaceValue;
   in.getOption("printDPPoissonFarFieldZeroModeFile", InputFile::Optional)>>par.printDPPoissonFarFieldZeroModeFile;
-  
+
   return par;
 }
-
-
-
