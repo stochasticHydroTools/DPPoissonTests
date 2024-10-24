@@ -83,7 +83,7 @@ PYBIND11_MODULE(uammd, m) {
 	"positions"_a,"charges"_a,"forces"_a);
   
   py::class_<DPPoissonSlab::Permitivity>(m, "Permittivity", "Permittivity in the three domains").
-    def(py::init([](uammd::real inside, uammd::real top, uammd::real bottom) {
+    def(py::init([](uammd::real top, uammd::real inside, uammd::real bottom) {
       return std::unique_ptr<DPPoissonSlab::Permitivity>(new DPPoissonSlab::Permitivity(
 							{.top=top, .bottom=bottom, .inside=inside}
 										       ));
